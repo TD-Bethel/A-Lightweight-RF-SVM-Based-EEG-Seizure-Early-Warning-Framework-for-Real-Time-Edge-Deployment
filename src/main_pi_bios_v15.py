@@ -1,8 +1,3 @@
-from src.main_pi_bios_v15 import main
-
-
-if __name__ == "__main__":
-    main()
 import os, sys, time, json, argparse, glob, random, warnings, threading, shutil, csv
 import numpy as np
 import joblib
@@ -11,7 +6,7 @@ from datetime import datetime
 from scipy.signal import butter, filtfilt, welch
 
 try:
-    from patients import PATIENT_REGISTRY
+    from src.patients import PATIENT_REGISTRY
 except ImportError:
     print("⚠️  patients.py not found — using single default patient")
     PATIENT_REGISTRY = [{
@@ -24,7 +19,7 @@ except ImportError:
     }]
 
 try:
-    from sms_notifier import send_sms_alert
+    from src.sms_notifier import send_sms_alert
     SMS_AVAILABLE = True
 except ImportError:
     SMS_AVAILABLE = False
@@ -46,8 +41,9 @@ parser.add_argument("--models", type=str, help="Path to .pkl models folder")
 parser.add_argument("--bios", action="store_true", help="Open maintenance BIOS mode")
 args = parser.parse_args()
 
-# 1. BASE_DIR is where this script lives
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 1. BASE_DIR points to project root (one level above src/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = PROJECT_ROOT
 
 # 2. FIX: STATUS_JSON now points to your project folder (Works on Windows & Pi)
 STATUS_JSON   = os.path.join(BASE_DIR, "neurowatch_status.json")
@@ -159,9 +155,8 @@ class Brain:
         if hw:
             hw.update_lcd(["NEW DATA FOUND", "Retraining...", "Please wait", ""])
 
-        # Locate train_and_export.py next to this script
-        trainer = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "train_and_export.py")
+        # Locate training script in scripts/
+        trainer = os.path.join(PROJECT_ROOT, "scripts", "train_and_export.py")
         if not os.path.exists(trainer):
             print(f"⚠️  train_and_export.py not found at {trainer} — skipping retrain.")
             return False

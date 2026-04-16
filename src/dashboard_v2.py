@@ -1,4 +1,3 @@
-from src import dashboard_v2  # noqa: F401
 # =============================================================================
 # dashboard.py  —  NeuroWatch Multi-Patient Streamlit Dashboard  (v3)
 #
@@ -25,7 +24,8 @@ try:
 except ImportError:
     _PIL_OK = False
 
-_PHOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "patient_photos")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PHOTO_DIR = os.path.join(PROJECT_ROOT, "patient_photos")
 
 def _load_patient_photo_pil(pid):
     """Returns a PIL Image (110x110, circular crop) or None."""
@@ -51,13 +51,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 try:
-    from sms_notifier import send_sms_alert_async
+    from src.sms_notifier import send_sms_alert_async
     SMS_AVAILABLE = True
 except ImportError:
     SMS_AVAILABLE = False
 
 try:
-    from patients import PATIENT_REGISTRY
+    from src.patients import PATIENT_REGISTRY
 except ImportError:
     PATIENT_REGISTRY = []
 
@@ -69,7 +69,7 @@ except ImportError:
 # =============================================================================
 # This finds the folder where your script is saved
 # This finds the EXACT folder where your dashboard.py is saved
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = PROJECT_ROOT
 
 # These MUST match the filenames in your main_pi_bios_v15.py script
 PATIENTS_JSON    = os.path.join(BASE_DIR, "neurowatch_patients.json")

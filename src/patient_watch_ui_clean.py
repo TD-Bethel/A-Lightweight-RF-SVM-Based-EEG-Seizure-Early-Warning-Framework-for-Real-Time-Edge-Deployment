@@ -1,8 +1,3 @@
-from src.patient_watch_ui_clean import main
-
-
-if __name__ == "__main__":
-    main()
 """
 NeuroWatch --- Patient Home Monitor
 A wearable-style, patient-friendly UI inspired by smartwatch health dashboards.
@@ -23,7 +18,7 @@ except ImportError:
     PIL_AVAILABLE = False
 
 # ------ Paths (same as main_pi.py / desktop_dashboard.py) ---------------------------------------------------------------------------
-BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATIENTS_JSON  = os.path.join(BASE_DIR, "neurowatch_patients.json")
 STATUS_JSON    = os.path.join(BASE_DIR, "neurowatch_status.json")
 HISTORY_PREFIX = "neurowatch_history_"

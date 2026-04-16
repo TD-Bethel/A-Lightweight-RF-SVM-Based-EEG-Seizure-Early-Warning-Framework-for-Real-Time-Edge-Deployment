@@ -1,0 +1,12 @@
+joblib
+matplotlib
+mne
+numpy
+pandas
+Pillow
+plotly
+pyedflib
+scikit-learn
+scipy
+streamlit
+twilio
