@@ -1,0 +1,44 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging/build
+build/
+dist/
+*.egg-info/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.tmp
+
+# Secrets/env
+.env
+.env.*
+
+# Project data/artifacts (large/sensitive)
+data/
+models/training_archive.npz
+patient_photos/
+neurowatch_history_*.json
+neurowatch_status.json
+neurowatch_metrics_output.json

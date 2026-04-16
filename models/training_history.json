@@ -1,0 +1,20 @@
+[
+  {
+    "timestamp": "2026-04-07T12:15:15.375319",
+    "dataset": "C:\\Users\\thebe\\Documents\\EEG_Seizure_Detection - To edit\\NeuroWatch_Project\\data\\Bonn Univeristy Dataset",
+    "samples_prev": 0,
+    "samples_new": 500,
+    "samples_total": 500,
+    "accuracy": 0.8,
+    "report": "              precision    recall  f1-score   support\n\n      Normal       0.71      0.90      0.79        40\n Pre-Seizure       0.93      0.70      0.80        40\n     Seizure       0.84      0.80      0.82        20\n\n    accuracy                           0.80       100\n   macro avg       0.83      0.80      0.80       100\nweighted avg       0.82      0.80      0.80       100\n"
+  },
+  {
+    "timestamp": "2026-04-10T08:04:57.044371",
+    "dataset": "C:\\Users\\thebe\\Documents\\EEG_Seizure_Detection - To edit\\NeuroWatch_Project\\data\\Test Dataset\\Raw_EDF_Files",
+    "samples_prev": 500,
+    "samples_new": 208183,
+    "samples_total": 208683,
+    "accuracy": 0.9326,
+    "report": "              precision    recall  f1-score   support\n\n      Normal       0.93      1.00      0.97     38880\n Pre-Seizure       0.88      0.02      0.03      2058\n     Seizure       0.82      0.02      0.04       799\n\n    accuracy                           0.93     41737\n   macro avg       0.88      0.35      0.35     41737\nweighted avg       0.93      0.93      0.90     41737\n"
+  }
+]
