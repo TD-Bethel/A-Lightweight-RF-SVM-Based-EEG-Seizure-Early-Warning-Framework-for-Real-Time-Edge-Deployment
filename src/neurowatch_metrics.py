@@ -38,8 +38,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NPY_PATH = os.path.join(PROJECT_ROOT, "data", "Test dataset", "Npy_files")
 
 # Output JSON — saved next to this script AND copied to /tmp for dashboard.py
-METRICS_JSON_OUT     = os.path.join(PROJECT_ROOT, "neurowatch_metrics_output.json")
-METRICS_JSON_DASHBOARD = "/tmp/neurowatch_metrics.json"   # dashboard.py reads this
+METRICS_JSON_OUT     = os.path.join(PROJECT_ROOT, "json", "neurowatch_metrics_output.json")
+METRICS_JSON_DASHBOARD = os.path.join(PROJECT_ROOT, "json", "neurowatch_metrics.json")
 
 # =============================================================================
 # CLASS DEFINITIONS

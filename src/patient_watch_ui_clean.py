@@ -19,8 +19,8 @@ except ImportError:
 
 # ------ Paths (same as main_pi.py / desktop_dashboard.py) ---------------------------------------------------------------------------
 BASE_DIR       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PATIENTS_JSON  = os.path.join(BASE_DIR, "neurowatch_patients.json")
-STATUS_JSON    = os.path.join(BASE_DIR, "neurowatch_status.json")
+PATIENTS_JSON  = os.path.join(BASE_DIR, "json", "neurowatch_patients.json")
+STATUS_JSON    = os.path.join(BASE_DIR, "json", "neurowatch_status.json")
 HISTORY_PREFIX = "neurowatch_history_"
 PHOTO_DIR      = os.path.join(BASE_DIR, "patient_photos")
 HOME_PATIENT_ID = "P001"
@@ -51,9 +51,11 @@ STATE_LABELS = {
 }
 STATE_ADVICE = {
     "Seizure":    "Your caregiver has been notified.",
-    "Pre-Seizure": "Find a safe, comfortable place to sit or lie down.",
+    "Pre-Seizure": "Find a safe, comfortable place to sit or lie down and take medication.",
     "Normal":     "Everything looks normal. Keep resting.",
 }
+
+DEFAULT_EMERGENCY_PHONE = "74390351"
 
 RING_SIZE   = 220   # diameter of the status ring canvas
 RING_W      = 18    # ring stroke width
@@ -373,6 +375,8 @@ class PatientUI:
             conf    = float(patient.get("confidence", 0.75))
             ts      = patient.get("timestamp", "")
             emer    = patient.get("emergency_contact", "---")
+            emer_no = str(patient.get("emergency_phone", DEFAULT_EMERGENCY_PHONE))
+            sms_sent = bool(patient.get("sms_sent", False))
             history = self._load_history(pid)
 
             self._state   = state
@@ -391,12 +395,22 @@ class PatientUI:
             first_name = name.split()[0]
             self.lbl_greeting.config(text=f"Hello, {first_name} ----")
             self.lbl_name.config(text=name)
+            status_text = STATE_LABELS.get(state, state)
+            if state == "Seizure" and sms_sent:
+                status_text = "---  Alert --- Doctor contacted"
             self.lbl_status_main.config(
-                text=STATE_LABELS.get(state, state),
+                text=status_text,
                 fg=STATE_COLORS.get(state, GREEN),
             )
-            self.lbl_advice.config(text=STATE_ADVICE.get(state, ""))
-            self.lbl_emergency.config(text=emer)
+            advice_text = STATE_ADVICE.get(state, "")
+            if state == "Seizure":
+                advice_text = (
+                    "Doctor has been contacted. Please stay calm and wait for assistance."
+                    if sms_sent
+                    else "CONTACT DOCTOR/EMERGENCY"
+                )
+            self.lbl_advice.config(text=advice_text)
+            self.lbl_emergency.config(text=f"{emer}\n{emer_no}")
 
             # Cards
             self.card_streak.config(

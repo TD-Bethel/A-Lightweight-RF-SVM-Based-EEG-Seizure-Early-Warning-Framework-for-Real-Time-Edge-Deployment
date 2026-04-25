@@ -50,8 +50,8 @@ args = parser.parse_args()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 2. FIX: STATUS_JSON now points to your project folder (Works on Windows & Pi)
-STATUS_JSON   = os.path.join(BASE_DIR, "neurowatch_status.json")
-PATIENTS_JSON = os.path.join(BASE_DIR, "neurowatch_patients.json")
+STATUS_JSON   = os.path.join(BASE_DIR, "json", "neurowatch_status.json")
+PATIENTS_JSON = os.path.join(BASE_DIR, "json", "neurowatch_patients.json")
 
 # 3. Set Data and Model Paths
 DATA_PATH = os.path.abspath(args.data) if args.data else os.path.join(BASE_DIR, "data")
@@ -229,7 +229,7 @@ class Brain:
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                               f1_score, confusion_matrix)
 
-METRICS_JSON = os.path.join(BASE_DIR, "neurowatch_metrics.json")
+METRICS_JSON = os.path.join(BASE_DIR, "json", "neurowatch_metrics.json")
 
 
 def _read_json_safe(path, default):
@@ -526,34 +526,31 @@ def main():
         return
 
     live_samples = []
-    # Search root folder + Bonn-style subfolders
-    search_dirs = [DATA_PATH] + [os.path.join(DATA_PATH, s) for s in CLASS_MAP.keys()]
-    
+    # Recursively search for .edf and .txt files in DATA_PATH and all subfolders
     print(f"📂 Scanning for EEG (.edf/.txt) in: {DATA_PATH}")
-    for d in search_dirs:
-        if not os.path.exists(d): continue
-        files = glob.glob(os.path.join(d, "*.txt")) + glob.glob(os.path.join(d, "*.edf"))
-        
-        for f in files:
-            try:
-                # Determine Label based on folder name
-                folder_name = os.path.basename(os.path.dirname(f))
-                label = CLASS_MAP.get(folder_name, 0)
+    for root, _, files in os.walk(DATA_PATH):
+        for file in files:
+            if file.lower().endswith(('.edf', '.txt')):
+                f = os.path.join(root, file)
+                try:
+                    # Determine Label based on folder name
+                    folder_name = os.path.basename(os.path.dirname(f))
+                    label = CLASS_MAP.get(folder_name, 0)
 
-                if f.endswith('.edf'):
-                    raw = mne.io.read_raw_edf(f, preload=True, verbose=False)
-                    # AUTO-RESAMPLE: Matches model training rate
-                    if raw.info['sfreq'] != TARGET_FS:
-                        raw.resample(TARGET_FS)
-                    # Grab first channel
-                    data = raw.get_data()[0]
-                    # Ensure we have at least 1 second of data
-                    if len(data) >= TARGET_FS:
-                        live_samples.append((data[:TARGET_FS], label))
-                else:
-                    live_samples.append((np.loadtxt(f), label))
-            except Exception as e:
-                print(f"⚠️ Skip {os.path.basename(f)}: {e}")
+                    if f.endswith('.edf'):
+                        raw = mne.io.read_raw_edf(f, preload=True, verbose=False)
+                        # AUTO-RESAMPLE: Matches model training rate
+                        if raw.info['sfreq'] != TARGET_FS:
+                            raw.resample(TARGET_FS)
+                        # Grab first channel
+                        data = raw.get_data()[0]
+                        # Ensure we have at least 1 second of data
+                        if len(data) >= TARGET_FS:
+                            live_samples.append((data[:TARGET_FS], label))
+                    else:
+                        live_samples.append((np.loadtxt(f), label))
+                except Exception as e:
+                    print(f"⚠️ Skip {os.path.basename(f)}: {e}")
 
     if not live_samples:
         print("❌ No valid files found in path.")

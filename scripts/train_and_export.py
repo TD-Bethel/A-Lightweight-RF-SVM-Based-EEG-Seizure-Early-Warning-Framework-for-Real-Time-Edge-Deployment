@@ -35,8 +35,8 @@ from sklearn.svm import SVC
 
 # ======================== CONFIGURATION ========================
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-dataset_path = r"C:\Users\thebe\Documents\MATLAB\Bonn Univeristy Dataset"
-model_export_path = os.path.join(PROJECT_ROOT, "models")
+dataset_path = os.path.join(PROJECT_ROOT, "data", "Bonn Univeristy Dataset")
+model_export_path = os.path.join(PROJECT_ROOT, "models", "MODELS_V2")
 
 # Bonn Mapping: O/N=Normal(0), S/F=Pre-Seizure(1), Z=Seizure(2)
 CLASS_MAP = {"O": 0, "N": 0, "S": 1, "F": 1, "Z": 2}

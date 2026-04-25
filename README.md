@@ -168,6 +168,57 @@ graph LR
 
 ---
 
+## Data Preprocessing & Feature Extraction Pipeline
+
+```mermaid
+graph TD
+    A["🔊 Raw EEG Signal"] --> B["Check Sampling<br/>Frequency"]
+    
+    B -->|fs ≠ 128 Hz| C["Resample to 128 Hz<br/>using scipy.signal.resample"]
+    B -->|fs = 128 Hz| D["Signal Ready"]
+    C --> D
+    
+    D --> E["Apply Bandpass Filter<br/>Butterworth, Order 4<br/>0.5 - 45 Hz"]
+    
+    E --> F["Zero-Phase Filtering<br/>filtfilt()"]
+    
+    F --> G["Compute Power Spectral<br/>Density PSD<br/>Welch Method<br/>NPERSEG = 128"]
+    
+    G --> H["Extract Frequency Bands"]
+    
+    H --> I["Delta Band<br/>1-4 Hz<br/>Mean PSD"]
+    H --> J["Theta Band<br/>4-8 Hz<br/>Mean PSD"]
+    H --> K["Alpha Band<br/>8-13 Hz<br/>Mean PSD"]
+    H --> L["Beta Band<br/>13-30 Hz<br/>Mean PSD"]
+    
+    I --> M["4-Element<br/>Feature Vector<br/>[Delta, Theta,<br/>Alpha, Beta]"]
+    J --> M
+    K --> M
+    L --> M
+    
+    M --> N["Standardize Features<br/>StandardScaler<br/>fits on training data"]
+    
+    N --> O["✅ Preprocessed Features<br/>Ready for Model Input"]
+    
+    style A fill:#E3F2FD
+    style E fill:#FFF3E0
+    style G fill:#F3E5F5
+    style M fill:#E8F5E9
+    style O fill:#C8E6C9
+```
+
+### Feature Extraction Details:
+- **Band Power Calculation** — Average power in each frequency band computed from PSD
+- **4 EEG Bands**:
+  - **Delta (1-4 Hz)** — Associated with deep sleep and seizure activity
+  - **Theta (4-8 Hz)** — Associated with drowsiness
+  - **Alpha (8-13 Hz)** — Associated with relaxation
+  - **Beta (13-30 Hz)** — Associated with alert, active thinking
+- **Standardization** — Each feature is normalized using training data mean/std to ensure consistent model input
+- **Output** — Preprocessed feature vectors fed to SVM + Random Forest classifiers
+
+---
+
 ## Main Files
 
 - `dashboard_v2.py`: Streamlit dashboard for multi-patient monitoring, metrics, and history views.

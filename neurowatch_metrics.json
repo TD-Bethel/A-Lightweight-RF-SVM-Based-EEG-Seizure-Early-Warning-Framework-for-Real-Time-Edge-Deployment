@@ -1,1 +1,0 @@
-{"timestamp": "2026-04-10T11:49:25.715713", "accuracy": 0.966, "precision": 0.966, "recall": 0.966, "f1": 0.966, "specificity": 0.95, "seizure_recall": 0.99, "confusion_matrix": [[190, 5, 5], [6, 194, 0], [1, 0, 99]], "n_samples": 500, "class_counts": {"Normal": 200, "Pre-Seizure": 200, "Seizure": 100}}

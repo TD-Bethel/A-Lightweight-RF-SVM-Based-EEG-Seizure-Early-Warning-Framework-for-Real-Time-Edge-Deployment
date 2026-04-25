@@ -46,8 +46,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE_DIR = PROJECT_ROOT
 
 # 2. FIX: STATUS_JSON now points to your project folder (Works on Windows & Pi)
-STATUS_JSON   = os.path.join(BASE_DIR, "neurowatch_status.json")
-PATIENTS_JSON = os.path.join(BASE_DIR, "neurowatch_patients.json")
+STATUS_JSON   = os.path.join(BASE_DIR, "json", "neurowatch_status.json")
+PATIENTS_JSON = os.path.join(BASE_DIR, "json", "neurowatch_patients.json")
 
 # 3. Set Data and Model Paths
 DATA_PATH = os.path.abspath(args.data) if args.data else os.path.join(BASE_DIR, "data")
@@ -224,7 +224,7 @@ class Brain:
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                               f1_score, confusion_matrix)
 
-METRICS_JSON = os.path.join(BASE_DIR, "neurowatch_metrics.json")
+METRICS_JSON = os.path.join(BASE_DIR, "json", "neurowatch_metrics.json")
 
 
 def _read_json_safe(path, default):

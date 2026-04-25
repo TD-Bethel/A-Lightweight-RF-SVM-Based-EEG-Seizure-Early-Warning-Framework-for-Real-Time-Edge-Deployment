@@ -72,9 +72,9 @@ except ImportError:
 BASE_DIR = PROJECT_ROOT
 
 # These MUST match the filenames in your main_pi_bios_v15.py script
-PATIENTS_JSON    = os.path.join(BASE_DIR, "neurowatch_patients.json")
-METRICS_JSON     = os.path.join(BASE_DIR, "neurowatch_metrics.json")
-STATUS_JSON      = os.path.join(BASE_DIR, "neurowatch_status.json")
+PATIENTS_JSON    = os.path.join(BASE_DIR, "json", "neurowatch_patients.json")
+METRICS_JSON     = os.path.join(BASE_DIR, "json", "neurowatch_metrics.json")
+STATUS_JSON      = os.path.join(BASE_DIR, "json", "neurowatch_status.json")
 
 # Debugging: Uncomment the line below to see EXACTLY where it's looking in your terminal
 # print(f"DEBUG: Looking for status file at: {STATUS_JSON}")
