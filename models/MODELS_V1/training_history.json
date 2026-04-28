@@ -1,0 +1,142 @@
+[
+  {
+    "timestamp": "2026-04-27T12:47:23.047658",
+    "dataset": "C:\\Users\\thebe\\Documents\\EEG_Seizure_Detection - To edit\\NeuroWatch_Project\\data\\Bonn Univeristy Dataset",
+    "split": "stratified 80/10/10",
+    "n_features": 4,
+    "normalisation": "Option A \u2014 relative band power proportions",
+    "model": "Hybrid SVM (40%) + RF (60%)",
+    "training": {
+      "samples": 400,
+      "accuracy": 0.92,
+      "f1": 0.9199,
+      "seizure_recall": 0.95,
+      "per_class": {
+        "Normal": {
+          "count": 160,
+          "precision": 0.918,
+          "recall": 0.912,
+          "f1": 0.915
+        },
+        "Pre-Seizure": {
+          "count": 160,
+          "precision": 0.918,
+          "recall": 0.912,
+          "f1": 0.915
+        },
+        "Seizure": {
+          "count": 80,
+          "precision": 0.927,
+          "recall": 0.95,
+          "f1": 0.938
+        }
+      }
+    },
+    "validation": {
+      "samples": 50,
+      "accuracy": 0.82,
+      "f1": 0.8155,
+      "seizure_recall": 0.6,
+      "overfitting_gap": 0.1,
+      "per_class": {
+        "Normal": {
+          "count": 20,
+          "precision": 0.792,
+          "recall": 0.95,
+          "f1": 0.864
+        },
+        "Pre-Seizure": {
+          "count": 20,
+          "precision": 0.8,
+          "recall": 0.8,
+          "f1": 0.8
+        },
+        "Seizure": {
+          "count": 10,
+          "precision": 1.0,
+          "recall": 0.6,
+          "f1": 0.75
+        }
+      }
+    },
+    "test": {
+      "samples": 50,
+      "accuracy": 0.78,
+      "f1": 0.7817,
+      "seizure_recall": 0.7,
+      "per_class": {
+        "Normal": {
+          "count": 20,
+          "precision": 0.762,
+          "recall": 0.8,
+          "f1": 0.78
+        },
+        "Pre-Seizure": {
+          "count": 20,
+          "precision": 0.727,
+          "recall": 0.8,
+          "f1": 0.762
+        },
+        "Seizure": {
+          "count": 10,
+          "precision": 1.0,
+          "recall": 0.7,
+          "f1": 0.824
+        }
+      }
+    },
+    "confusion_matrices": {
+      "training": [
+        [
+          146,
+          9,
+          5
+        ],
+        [
+          13,
+          146,
+          1
+        ],
+        [
+          0,
+          4,
+          76
+        ]
+      ],
+      "validation": [
+        [
+          19,
+          1,
+          0
+        ],
+        [
+          4,
+          16,
+          0
+        ],
+        [
+          1,
+          3,
+          6
+        ]
+      ],
+      "test": [
+        [
+          16,
+          4,
+          0
+        ],
+        [
+          4,
+          16,
+          0
+        ],
+        [
+          1,
+          2,
+          7
+        ]
+      ]
+    }
+  }
+]

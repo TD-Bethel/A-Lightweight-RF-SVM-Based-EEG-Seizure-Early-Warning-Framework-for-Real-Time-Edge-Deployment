@@ -30,6 +30,61 @@ python main_pi_bios_v15.py
 streamlit run dashboard_v2.py
 ```
 
+## Remote Access (ngrok)
+
+The dashboard can be accessed from any device — phone, tablet, remote PC — using ngrok to create a secure public tunnel.
+
+### Requirements
+- ngrok account (free or paid): [ngrok.com](https://ngrok.com)
+- ngrok installed on the host PC
+
+### Setup (one-time)
+
+Authenticate ngrok with your account token:
+
+```bash
+ngrok config add-authtoken YOUR_TOKEN_HERE
+```
+
+The [.streamlit/config.toml](.streamlit/config.toml) file is already configured to disable CORS and XSRF protection so ngrok requests are accepted:
+
+```toml
+[server]
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+headless = true
+```
+
+### Running with remote access
+
+Open two terminals:
+
+**Terminal 1 — Start Streamlit:**
+```bash
+streamlit run dashboard_v2.py
+```
+
+**Terminal 2 — Start ngrok tunnel:**
+```bash
+ngrok http 8501
+```
+
+ngrok will print a public URL like:
+```
+Forwarding   https://xxxx.ngrok-free.app -> http://localhost:8501
+```
+
+Open that URL on any device from anywhere.
+
+### Notes
+- The public URL changes every time ngrok restarts (paid plan gives a fixed domain)
+- On first open, free-tier ngrok shows a warning page — click **"Visit Site"** to proceed
+- Tested and working on mobile using the **Brave** browser
+- ngrok inspector (request log) available locally at `http://127.0.0.1:4040`
+
+---
+
 ## What This Project Does
 
 - Detects EEG states as `Normal`, `Pre-Seizure`, or `Seizure`

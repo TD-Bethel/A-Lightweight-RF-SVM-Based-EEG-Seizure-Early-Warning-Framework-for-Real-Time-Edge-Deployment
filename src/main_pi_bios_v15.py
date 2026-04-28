@@ -3,7 +3,7 @@ import numpy as np
 import joblib
 import mne  # Required: pip install mne
 from datetime import datetime
-from scipy.signal import butter, filtfilt, welch
+from scipy.signal import butter, filtfilt, welch, resample
 
 try:
     from src.patients import PATIENT_REGISTRY
@@ -51,7 +51,7 @@ PATIENTS_JSON = os.path.join(BASE_DIR, "json", "neurowatch_patients.json")
 
 # 3. Set Data and Model Paths
 DATA_PATH = os.path.abspath(args.data) if args.data else os.path.join(BASE_DIR, "data")
-MODEL_PATH = os.path.abspath(args.models) if args.models else os.path.join(BASE_DIR, "models")
+MODEL_PATH = os.path.abspath(args.models) if args.models else os.path.join(BASE_DIR, "models", "MODELS_V1")
 
 # 4. Model Constants
 TARGET_FS = 128 
@@ -206,10 +206,16 @@ class Brain:
         b, a = butter(4, [0.5 / nyq, 45 / nyq], btype="band")
         filt = filtfilt(b, a, data)
         f, psd = welch(filt, fs=TARGET_FS, nperseg=TARGET_FS)
-        return [np.mean(psd[(f >= 1)  & (f <= 4)]),   # Delta
-                np.mean(psd[(f >= 4)  & (f <= 8)]),   # Theta
-                np.mean(psd[(f >= 8)  & (f <= 13)]),  # Alpha
-                np.mean(psd[(f >= 13) & (f <= 30)])]  # Beta
+        bp = np.array([
+            np.mean(psd[(f >= 1)  & (f <= 4)]),
+            np.mean(psd[(f >= 4)  & (f <= 8)]),
+            np.mean(psd[(f >= 8)  & (f <= 13)]),
+            np.mean(psd[(f >= 13) & (f <= 30)]),
+        ])
+        total = bp.sum()
+        if total > 0:
+            bp = bp / total  # Option A: relative band power (matches training)
+        return bp.tolist()
 
     def predict(self, features):
         x_scaled = self.scaler.transform([features])
@@ -257,7 +263,7 @@ def _bios_status_health_check():
             parse_state = "valid JSON" if data is not None else "invalid JSON"
             print(f"  parse: {parse_state}")
 
-    history_files = glob.glob(os.path.join(BASE_DIR, "neurowatch_history_*.json"))
+    history_files = glob.glob(os.path.join(BASE_DIR, "json", "neurowatch_history_*.json"))
     print(f"- History files : {len(history_files)} found")
 
 
@@ -274,7 +280,7 @@ def _bios_view_live_history():
     _print_header("[3] View live patient history")
     live_patient = next((p for p in PATIENT_REGISTRY if p.get("live", False)), None)
     pid = live_patient.get("id") if live_patient else "P001"
-    path = os.path.join(BASE_DIR, f"neurowatch_history_{pid}.json")
+    path = os.path.join(BASE_DIR, "json", f"neurowatch_history_{pid}.json")
     history = _read_json_safe(path, [])
     if not history:
         print(f"No history found for {pid} at {path}")
@@ -291,7 +297,7 @@ def _bios_view_live_history():
 def _bios_export_histories_csv():
     _print_header("[4] Export all histories to CSV")
     rows = []
-    for path in glob.glob(os.path.join(BASE_DIR, "neurowatch_history_*.json")):
+    for path in glob.glob(os.path.join(BASE_DIR, "json", "neurowatch_history_*.json")):
         pid = os.path.basename(path).replace("neurowatch_history_", "").replace(".json", "")
         history = _read_json_safe(path, [])
         for r in history:
@@ -331,7 +337,7 @@ def _bios_view_model_metrics():
 
 def _bios_clear_histories():
     _print_header("[6] Clear all history files")
-    files = glob.glob(os.path.join(BASE_DIR, "neurowatch_history_*.json"))
+    files = glob.glob(os.path.join(BASE_DIR, "json", "neurowatch_history_*.json"))
     if not files:
         print("No history files found.")
         return
@@ -521,10 +527,15 @@ def main():
         return
 
     live_samples = []
-    # Search root folder + Bonn-style subfolders
-    search_dirs = [DATA_PATH] + [os.path.join(DATA_PATH, s) for s in CLASS_MAP.keys()]
-    
+    # Recursively search DATA_PATH for all Bonn-style subfolders (O/N/S/F/Z) anywhere in the tree
     print(f"📂 Scanning for EEG (.edf/.txt) in: {DATA_PATH}")
+    search_dirs = [DATA_PATH]
+    for root, dirs, _ in os.walk(DATA_PATH):
+        for d in dirs:
+            if d in CLASS_MAP:
+                search_dirs.append(os.path.join(root, d))
+    search_dirs = list(dict.fromkeys(search_dirs))  # deduplicate, preserve order
+
     for d in search_dirs:
         if not os.path.exists(d): continue
         files = glob.glob(os.path.join(d, "*.txt")) + glob.glob(os.path.join(d, "*.edf"))
@@ -546,7 +557,10 @@ def main():
                     if len(data) >= TARGET_FS:
                         live_samples.append((data[:TARGET_FS], label))
                 else:
-                    live_samples.append((np.loadtxt(f), label))
+                    sig = np.loadtxt(f)
+                    n_new = int(len(sig) * TARGET_FS / 173.61)
+                    sig = resample(sig, n_new)
+                    live_samples.append((sig, label))
             except Exception as e:
                 print(f"⚠️ Skip {os.path.basename(f)}: {e}")
 
@@ -705,7 +719,7 @@ def main():
                 for p in PATIENT_REGISTRY:
                     pid        = p["id"]
                     pdata      = patients_out.get(pid, {})
-                    hist_path  = os.path.join(BASE_DIR, f"neurowatch_history_{pid}.json")
+                    hist_path  = os.path.join(BASE_DIR, "json", f"neurowatch_history_{pid}.json")
                     try:
                         with open(hist_path, "r") as f:
                             history = json.load(f)

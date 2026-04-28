@@ -9,7 +9,7 @@ from scipy.signal import resample, butter, filtfilt, welch
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGET_FS = 128
 WINDOW_SEC = 2
-MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "MODELS_V2")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "MODELS_V1")
 CLASSES = ["Normal", "Pre-Seizure", "Seizure"]
 COLORS = ["#2ecc71", "#f1c40f", "#e74c3c"]
 BONN_FOLDERS = {"O", "N", "S", "F", "Z"}

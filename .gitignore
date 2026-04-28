@@ -42,3 +42,6 @@ patient_photos/
 neurowatch_history_*.json
 neurowatch_status.json
 neurowatch_metrics_output.json
+
+# Prevent accidental nested clone of the same repo
+/NeuroWatch_Project/

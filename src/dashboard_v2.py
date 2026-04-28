@@ -165,7 +165,7 @@ def get_all_patients():
     return read_json(PATIENTS_JSON, {})
 
 def get_patient_history_path(pid):
-    return os.path.join(BASE_DIR, f"neurowatch_history_{pid}.json")
+    return os.path.join(BASE_DIR, "json", f"neurowatch_history_{pid}.json")
 
 def get_patient_history(pid):
     path = get_patient_history_path(pid)
