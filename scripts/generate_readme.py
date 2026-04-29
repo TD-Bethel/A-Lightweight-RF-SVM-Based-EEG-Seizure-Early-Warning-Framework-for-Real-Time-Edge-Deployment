@@ -79,28 +79,18 @@ def collect_imports(py_file: Path) -> set[str]:
 
 def classify_dependencies(imports: set[str]) -> tuple[list[str], list[str]]:
     stdlib = {
-        "argparse",
-        "ast",
-        "csv",
-        "datetime",
-        "glob",
-        "json",
-        "math",
-        "os",
-        "pathlib",
-        "random",
-        "runpy",
-        "shutil",
-        "subprocess",
-        "sys",
-        "threading",
-        "time",
-        "tkinter",
-        "typing",
-        "warnings",
+        "argparse", "ast", "base64", "collections", "concurrent",
+        "csv", "datetime", "enum", "functools", "glob", "hashlib",
+        "io", "itertools", "json", "logging", "math", "operator",
+        "os", "pathlib", "pickle", "queue", "random", "re", "runpy",
+        "shutil", "socket", "struct", "subprocess", "sys", "tempfile",
+        "threading", "time", "tkinter", "traceback", "typing",
+        "unittest", "urllib", "uuid", "warnings", "weakref",
     }
     optional = {"twilio", "RPi", "RPLCD", "PIL"}
-    local_names = LOCAL_MODULES | {"src", "scripts"}
+    src_modules     = {p.stem for p in (ROOT / "src").glob("*.py")}
+    scripts_modules = {p.stem for p in (ROOT / "scripts").glob("*.py")}
+    local_names = LOCAL_MODULES | src_modules | scripts_modules | {"src", "scripts"}
     third_party = sorted(
         name
         for name in imports
