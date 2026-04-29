@@ -262,32 +262,31 @@ y = np.array(
     dtype=np.int32,
 )
 
-# ── Stratified 80 / 10 / 10 split ─────────────────────────────────────────────
-print(f"\n  Splitting  80 / 10 / 10  (seed={SEED})...")
-X_train, X_tmp, y_train, y_tmp = train_test_split(
-    X, y, test_size=(VAL_SIZE + TEST_SIZE), random_state=SEED, stratify=y)
-X_val, X_test, y_val, y_test = train_test_split(
-    X_tmp, y_tmp, test_size=0.5, random_state=SEED, stratify=y_tmp)
+# ── Save as x_train (80%) + x_test (20%) so train_mendeley.py gets 100% ───────
+# train_mendeley.py combines these two files then applies its own 80/10/10 split.
+# Saving a separate x_val would cause 10% of data to be silently dropped there.
+print(f"\n  Saving 80% / 20% files for train_mendeley.py (which re-splits 80/10/10)...")
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.20, random_state=SEED, stratify=y)
 
-print(f"    Train : {len(X_train):>5}  |  Val : {len(X_val):>4}  |  Test : {len(X_test):>4}")
-for split_name, y_s in [("Train", y_train), ("Val", y_val), ("Test", y_test)]:
+print(f"    x_train.npy : {len(X_train):>5} samples (80%)")
+print(f"    x_test.npy  : {len(X_test):>5} samples (20% — train_mendeley.py splits this into val+test)")
+for split_name, y_s in [("Train", y_train), ("Test", y_test)]:
     dist = {CLASSES[c]: int(np.sum(y_s == c)) for c in [0, 1, 2]}
     print(f"    {split_name:<6}: {dist}")
 
 # ── Save ───────────────────────────────────────────────────────────────────────
 np.save(os.path.join(OUT_DIR, "x_train.npy"), X_train)
 np.save(os.path.join(OUT_DIR, "y_train.npy"), y_train)
-np.save(os.path.join(OUT_DIR, "x_val.npy"),   X_val)
-np.save(os.path.join(OUT_DIR, "y_val.npy"),   y_val)
 np.save(os.path.join(OUT_DIR, "x_test.npy"),  X_test)
 np.save(os.path.join(OUT_DIR, "y_test.npy"),  y_test)
 
 print(f"\n✅  Saved to: {OUT_DIR}")
 print(f"    x_train.npy  {X_train.shape}")
 print(f"    x_test.npy   {X_test.shape}")
-print(f"\n  To train on this dataset:")
-print(f"    python train_mendeley.py --data \"{OUT_DIR}\"")
+print(f"\n  To train (final 80/10/10 split applied inside train_mendeley.py):")
+print(f"    python train_mendeley.py --data \"{OUT_DIR}\" --out models/MODELS_PREICTAL")
 print(f"\n  Label meanings in this dataset:")
-print(f"    0 = Normal   (EEG >{args.normal_dist_minutes} min from any seizure)")
+print(f"    0 = Normal    (EEG >{args.normal_dist_minutes} min from any seizure)")
 print(f"    1 = Pre-ictal ({args.gap_minutes}–{args.preictal_minutes} min before seizure onset)")
-print(f"    2 = Ictal    (during seizure)\n")
+print(f"    2 = Ictal     (during seizure)\n")
