@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$generator = Join-Path $projectRoot "generate_readme.py"
+$generator = Join-Path $projectRoot "scripts\generate_readme.py"
 
 if (-not (Test-Path $generator)) {
     throw "generate_readme.py not found in $projectRoot"

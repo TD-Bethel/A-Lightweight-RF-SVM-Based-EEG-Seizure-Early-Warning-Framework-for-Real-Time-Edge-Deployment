@@ -10,20 +10,38 @@ README_PATH = ROOT / "README.md"
 LOCAL_MODULES = {path.stem for path in ROOT.glob("*.py")}
 
 SCRIPT_DESCRIPTIONS = {
-    "main_pi_bios_v15.py": "Main live monitoring engine for EEG detection, patient state updates, and hardware alerts.",
-    "train_and_export.py": "Training and incremental retraining pipeline that exports the scaler and models.",
-    "dashboard_v2.py": "Streamlit dashboard for multi-patient monitoring, metrics, and history views.",
+    # Root launchers / core
+    "main_pi_bios_v15.py": "Main live monitoring engine — loads EEG data, runs SVM+RF ensemble, writes patient JSON, triggers alerts.",
+    "dashboard_v2.py": "Streamlit clinician dashboard — multi-patient monitoring, 60-second live charts, metrics, ward map.",
+    "train_mendeley.py": "Mendeley dataset trainer — 247-feature extractor (19ch × 13), SMOTE, auto-tuned SVM+RF ensemble, outputs to models/MODELS_MENDELEY/.",
+    "train_and_export.py": "Bonn dataset trainer — 13-feature extractor (5 bands + 8 stats), SMOTE, auto-tuned ensemble, outputs to models/MODELS_V1/.",
     "neurowatch_metrics.py": "Offline metrics pipeline for the prepared test dataset.",
     "run_prediction.py": "Local prediction and visualization utility for stepping through EEG files.",
-    "patients.py": "Patient registry with live and demo patient definitions.",
+    "patients.py": "Patient registry — P001 (John Molebatsi) is the live patient; P002-P007 are simulated demo patients.",
     "sms_notifier.py": "Twilio-based SMS notification helper with cooldown handling.",
     "scan_edf_dataset.py": "Dataset scanning helper for EDF-based EEG files.",
+    "generate_readme.py": "Auto-generates README.md from project structure and script metadata.",
+    # src/
+    "src/main_pi_bios_v15.py": "Main monitoring engine (src/ copy).",
+    "src/dashboard_v2.py": "Clinician dashboard (src/ copy).",
+    "src/patient_watch_ui_clean.py": "Tkinter desktop patient UI — smartwatch-style status ring, history strip, emergency contact.",
+    "src/patient_mobile_ui.py": "Streamlit mobile patient UI — phone-friendly version of the watch UI, auto-refreshes every 2 s.",
+    "src/patients.py": "Patient registry definitions.",
+    "src/sms_notifier.py": "SMS notifier (src/ copy).",
+    "src/neurowatch_metrics.py": "Offline metrics (src/ copy).",
+    # scripts/
+    "scripts/train_and_export.py": "Bonn training script (scripts/ copy).",
+    "scripts/plot_results.py": "Visualise training results from saved JSON reports without retraining — confusion matrices, metrics bar chart, overfitting gap, per-class breakdown.",
+    "scripts/run_prediction.py": "Prediction helper (scripts/ copy).",
+    "scripts/scan_edf_dataset.py": "Dataset scanner (scripts/ copy).",
 }
 
 PROJECT_SUMMARY = (
-    "NeuroWatch is an EEG seizure detection and monitoring project that combines "
-    "machine learning, a Raspberry Pi runtime, patient-state tracking, JSON feeds "
-    "for a dashboard, and optional SMS alerts."
+    "NeuroWatch is a real-time EEG seizure detection and monitoring system. "
+    "It uses a hybrid SVM + Random Forest ensemble trained on either the Bonn University "
+    "or Mendeley EEG dataset to classify brain states as Normal, Pre-Seizure, or Seizure. "
+    "The system includes a clinician dashboard, a mobile patient UI, SMS alerting, "
+    "Raspberry Pi hardware support, and optional ngrok remote access."
 )
 
 WATCHED_SUFFIXES = {".py", ".ps1", ".json", ".md"}
@@ -37,7 +55,10 @@ IGNORED_NAMES = {
 
 
 def list_project_scripts() -> list[Path]:
-    return sorted(ROOT.glob("*.py"))
+    root_py   = sorted(ROOT.glob("*.py"))
+    src_py    = sorted((ROOT / "src").glob("*.py"))
+    scripts_py = sorted((ROOT / "scripts").glob("*.py"))
+    return root_py + src_py + scripts_py
 
 
 def collect_imports(py_file: Path) -> set[str]:
@@ -162,12 +183,27 @@ def render_readme() -> str:
     lines.append("")
     lines.append("2. (Optional) Configure Twilio SMS placeholders in `.env`.")
     lines.append("")
-    lines.append("3. Start the core workflows:")
+    lines.append("3. Train a model (choose one dataset):")
     lines.append("")
     lines.append("```bash")
-    lines.append('python train_and_export.py --data "data/Bonn Univeristy Dataset"')
-    lines.append("python main_pi_bios_v15.py")
+    lines.append("# Mendeley dataset (recommended — 247 features, 19 channels)")
+    lines.append("python train_mendeley.py")
+    lines.append("")
+    lines.append("# Bonn University dataset (13 features, single channel)")
+    lines.append('python scripts/train_and_export.py --data "data/Bonn Univeristy Dataset"')
+    lines.append("```")
+    lines.append("")
+    lines.append("4. Start the monitoring engine and dashboards:")
+    lines.append("")
+    lines.append("```bash")
+    lines.append("# Terminal 1 — live monitoring engine")
+    lines.append("python src/main_pi_bios_v15.py")
+    lines.append("")
+    lines.append("# Terminal 2 — clinician dashboard")
     lines.append("streamlit run dashboard_v2.py")
+    lines.append("")
+    lines.append("# Terminal 3 — patient mobile UI (open on phone via ngrok or local IP)")
+    lines.append("streamlit run src/patient_mobile_ui.py --server.port 8502")
     lines.append("```")
     lines.append("")
     lines.append("## What This Project Does")
@@ -181,8 +217,9 @@ def render_readme() -> str:
     lines.append("## Main Files")
     lines.append("")
     for script in scripts:
-        desc = SCRIPT_DESCRIPTIONS.get(script.name, "Project utility script.")
-        lines.append(f"- `{script.name}`: {desc}")
+        rel = script.relative_to(ROOT).as_posix()
+        desc = SCRIPT_DESCRIPTIONS.get(rel, SCRIPT_DESCRIPTIONS.get(script.name, "Project utility script."))
+        lines.append(f"- `{rel}`: {desc}")
     lines.append("")
     lines.append("## Data Layout")
     lines.append("")
@@ -194,9 +231,12 @@ def render_readme() -> str:
     lines.append("")
     lines.append("## Models")
     lines.append("")
-    lines.append("- Export path: `models/`")
-    lines.append("- Main artifacts: `scaler.pkl`, `svm_model.pkl`, `rf_model.pkl`")
-    lines.append("- Incremental training artifacts: `training_archive.npz`, `training_history.json`")
+    lines.append("| Folder | Dataset | Features | Artifacts |")
+    lines.append("|--------|---------|----------|-----------|")
+    lines.append("| `models/MODELS_MENDELEY/` | Mendeley (19-channel) | 247 (19ch × 13) | scaler, svm, rf, ensemble_weights, training_report.json |")
+    lines.append("| `models/MODELS_V1/` | Bonn University | 13 (5 bands + 8 stats) | scaler, svm, rf, ensemble_weights, training_history.json |")
+    lines.append("")
+    lines.append("The monitoring engine auto-detects which model is loaded via `scaler.n_features_in_`.")
     lines.append("")
     lines.append("## Dependencies")
     lines.append("")
@@ -214,6 +254,7 @@ def render_readme() -> str:
     lines.append("Suggested install command:")
     lines.append("")
     install_packages = [
+        "imbalanced-learn",
         "joblib",
         "matplotlib",
         "mne",
@@ -223,6 +264,7 @@ def render_readme() -> str:
         "pyedflib",
         "scikit-learn",
         "scipy",
+        "seaborn",
         "streamlit",
         "twilio",
     ]
@@ -232,38 +274,44 @@ def render_readme() -> str:
     lines.append("")
     lines.append("## Common Commands")
     lines.append("")
-    lines.append("Train or refresh the models:")
-    lines.append("")
+    lines.append("**Train Mendeley model:**")
     lines.append("```bash")
-    lines.append('python train_and_export.py --data "data/Bonn Univeristy Dataset"')
+    lines.append("python train_mendeley.py")
     lines.append("```")
     lines.append("")
-    lines.append("Run the monitoring engine:")
-    lines.append("")
+    lines.append("**Train Bonn model:**")
     lines.append("```bash")
-    lines.append("python main_pi_bios_v15.py")
+    lines.append('python scripts/train_and_export.py --data "data/Bonn Univeristy Dataset"')
     lines.append("```")
     lines.append("")
-    lines.append("Run the dashboard:")
+    lines.append("**View training plots (no retraining):**")
+    lines.append("```bash")
+    lines.append("python scripts/plot_results.py --model mendeley")
+    lines.append("python scripts/plot_results.py --model bonn")
+    lines.append("```")
     lines.append("")
+    lines.append("**Run the monitoring engine:**")
+    lines.append("```bash")
+    lines.append("python src/main_pi_bios_v15.py")
+    lines.append("```")
+    lines.append("")
+    lines.append("**Run clinician dashboard:**")
     lines.append("```bash")
     lines.append("streamlit run dashboard_v2.py")
     lines.append("```")
     lines.append("")
-    lines.append("Compute offline metrics:")
-    lines.append("")
+    lines.append("**Run patient mobile UI:**")
     lines.append("```bash")
-    lines.append("python neurowatch_metrics.py")
+    lines.append("streamlit run src/patient_mobile_ui.py --server.address 0.0.0.0 --server.port 8502")
+    lines.append("ngrok http 8502   # open the printed URL on your phone")
     lines.append("```")
     lines.append("")
-    lines.append("Regenerate this README manually:")
-    lines.append("")
+    lines.append("**Regenerate this README manually:**")
     lines.append("```bash")
-    lines.append("python generate_readme.py")
+    lines.append("python scripts/generate_readme.py")
     lines.append("```")
     lines.append("")
-    lines.append("Start automatic README updates in PowerShell:")
-    lines.append("")
+    lines.append("**Start automatic README updates (PowerShell):**")
     lines.append("```powershell")
     lines.append(".\\watch_readme.ps1")
     lines.append("```")
