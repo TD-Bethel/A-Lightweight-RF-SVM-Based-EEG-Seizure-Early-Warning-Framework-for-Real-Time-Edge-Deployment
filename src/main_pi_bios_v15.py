@@ -711,6 +711,7 @@ def main():
     live_state_prev = None
     live_state_since = time.time()
     seizure_sms_status = None  # None=not attempted, False=not sent, True=sent
+    _had_seizure       = False  # True after a seizure episode — triggers "back to normal" SMS
 
     live_patient = next((p for p in PATIENT_REGISTRY if p.get("live", False)), None)
     live_patient_id = live_patient.get("id", "P001") if live_patient else "P001"
@@ -725,10 +726,27 @@ def main():
 
             # Track continuous duration in current state for LCD escalation logic.
             if state_text != live_state_prev:
+                prev_state      = live_state_prev
                 live_state_prev = state_text
                 live_state_since = time.time()
-                if state_text != "Seizure":
+                if state_text == "Seizure":
+                    _had_seizure = True
+                else:
                     seizure_sms_status = None
+                # "Back to stable" SMS — fires once when recovering from a seizure episode
+                if state_text == "Normal" and _had_seizure and SMS_AVAILABLE and live_patient:
+                    _had_seizure = False
+                    try:
+                        send_sms_alert(
+                            alert_type="normal",
+                            patient_name=live_patient.get("name", "Live Patient"),
+                            patient_id=live_patient.get("id", live_patient_id),
+                            ward=live_patient.get("ward", "Neuro"),
+                            confidence=float(conf),
+                            force=False,
+                        )
+                    except Exception:
+                        pass
             state_duration = time.time() - live_state_since
 
             # If seizure persists, try notifying doctor once per seizure episode.
