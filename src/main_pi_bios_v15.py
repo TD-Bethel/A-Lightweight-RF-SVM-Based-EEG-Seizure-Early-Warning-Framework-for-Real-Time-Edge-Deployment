@@ -269,20 +269,25 @@ class Brain:
     _NPERSEG     = 128
 
     def extract_features_mendeley(self, sample):
-        """247-feature extraction from a (19, 500) Mendeley sample.
-        Must stay in sync with extract_features() in train_mendeley.py.
-        Per channel: 5 band powers (Option A) + 8 statistical = 13 features × 19 = 247.
+        """Feature extraction from a (19, 500) Mendeley sample.
+        Matches train_mendeley.py exactly.
+
+        If model has 247 features (original Mendeley): per-channel only.
+        If model has 418 features (pre-ictal Mendeley): per-channel + 171 inter-channel correlations.
         """
         from scipy.stats import skew, kurtosis as _kurtosis
         nyq  = 0.5 * TARGET_FS
         b, a = butter(4, [0.5 / nyq, 45 / nyq], btype="band")
         all_feats = []
+        resampled = []
+
         for ch in range(self._N_CH):
             sig   = sample[ch]
             n_new = int(len(sig) * TARGET_FS / self._MENDELEY_FS)
             sig_r = resample(sig, n_new)
             reps  = (self._WIN_SIZE // len(sig_r)) + 1
             sig_t = np.tile(sig_r, reps)[:self._WIN_SIZE]
+            resampled.append(sig_r)
 
             # Band powers (5) — Option A normalised
             filt   = filtfilt(b, a, sig_t)
@@ -316,6 +321,15 @@ class Brain:
 
             all_feats.extend(bp_norm.tolist())
             all_feats.extend([activity, mobility, complexity, sk, kurt, rms, zcr, sent])
+
+        # Inter-channel correlation (171 pairs) — only for 418-feature model
+        if self.n_features == 418:
+            for i in range(self._N_CH):
+                for j in range(i + 1, self._N_CH):
+                    a_ = resampled[i]; b_ = resampled[j]
+                    n  = min(len(a_), len(b_))
+                    c  = float(np.corrcoef(a_[:n], b_[:n])[0, 1])
+                    all_feats.append(0.0 if np.isnan(c) else c)
 
         return np.array(all_feats, dtype=np.float32).tolist()
 

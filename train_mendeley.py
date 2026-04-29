@@ -85,7 +85,8 @@ NPERSEG      = 128
 N_CHANNELS   = 19
 N_BANDS      = 5        # delta, theta, alpha, beta, gamma
 N_STATS      = 8        # activity, mobility, complexity, skewness, kurtosis, rms, zcr, spectral_entropy
-N_FEATURES   = N_CHANNELS * (N_BANDS + N_STATS)    # 19 × 13 = 247
+N_CORR       = N_CHANNELS * (N_CHANNELS - 1) // 2  # 171 inter-channel correlation pairs
+N_FEATURES   = N_CHANNELS * (N_BANDS + N_STATS) + N_CORR  # 247 + 171 = 418
 
 TRAIN_RATIO  = 0.80
 VAL_RATIO    = 0.10
@@ -184,28 +185,36 @@ def _zcr(sig):
 
 def extract_features(sample):
     """
-    Extract 247-feature vector from one Mendeley sample.
+    Extract 418-feature vector from one Mendeley sample.
     sample: (19, 500) — 19 channels × 1 second at 500 Hz
 
-    Per channel (13 features):
+    Per channel (13 features × 19 channels = 247):
       Band powers (5): delta, theta, alpha, beta, gamma  — Option A normalised
       Statistical (8): activity, mobility, complexity,
                        skewness, kurtosis, rms, zcr, spectral_entropy
-    Returns (247,) float32 array.
+
+    Inter-channel (171 = 19×18÷2 correlation pairs):
+      Pearson correlation between every pair of channels — captures
+      pre-ictal synchrony (channels correlate more before a seizure).
+
+    Returns (418,) float32 array.
     """
-    all_feats = []
+    per_ch_feats = []
+    resampled    = []
+
     for ch in range(N_CHANNELS):
         sig   = sample[ch]
         n_new = int(len(sig) * TARGET_FS / FS_MENDELEY)
         sig_r = resample(sig, n_new)
         reps  = (WIN_SIZE // len(sig_r)) + 1
         sig_t = np.tile(sig_r, reps)[:WIN_SIZE]
+        resampled.append(sig_r)
 
         # Band powers — Option A normalised
         bp      = _band_power(sig_t)
         bp_norm = _normalise(bp)
 
-        # Hjorth parameters on resampled signal
+        # Hjorth parameters
         act, mob, comp = _hjorth(sig_r)
 
         # Statistical features
@@ -214,15 +223,26 @@ def extract_features(sample):
         rms  = float(np.sqrt(np.mean(sig_r ** 2)))
         zcr  = _zcr(sig_r)
 
-        # Spectral entropy from PSD
+        # Spectral entropy
         filt    = _bandpass(sig_t, TARGET_FS)
         _, psd  = welch(filt, fs=TARGET_FS, nperseg=NPERSEG)
         sent    = _spectral_entropy(psd)
 
-        all_feats.extend(bp_norm.tolist())
-        all_feats.extend([act, mob, comp, sk, kurt, rms, zcr, sent])
+        per_ch_feats.extend(bp_norm.tolist())
+        per_ch_feats.extend([act, mob, comp, sk, kurt, rms, zcr, sent])
 
-    return np.array(all_feats, dtype=np.float32)
+    # Inter-channel Pearson correlation (171 pairs)
+    # Pre-ictal biomarker: channels synchronise before seizure onset
+    corr_feats = []
+    for i in range(N_CHANNELS):
+        for j in range(i + 1, N_CHANNELS):
+            # Align lengths in case of rounding
+            a = resampled[i]; b = resampled[j]
+            n = min(len(a), len(b))
+            c = float(np.corrcoef(a[:n], b[:n])[0, 1])
+            corr_feats.append(0.0 if np.isnan(c) else c)
+
+    return np.array(per_ch_feats + corr_feats, dtype=np.float32)
 
 # =============================================================================
 # ── STEP 2: LOAD NPY FILES & BUILD FEATURE MATRIX
@@ -362,10 +382,10 @@ def train(X_train, y_train, X_val, y_val):
         print(f"  ⚠  SMOTE skipped — install imbalanced-learn for class balancing")
 
     # ── SVM ──────────────────────────────────────────────────────────────────
-    print(f"\n  Training SVM (RBF, C=50, balanced)...")
+    print(f"\n  Training SVM (RBF, C=10, balanced)...")
     t0  = time.time()
     svm = SVC(
-        kernel="rbf", C=50, gamma="scale",
+        kernel="rbf", C=10, gamma="scale",
         probability=True,
         class_weight="balanced",
         random_state=RANDOM_SEED,
@@ -378,12 +398,12 @@ def train(X_train, y_train, X_val, y_val):
           f"Val accuracy: {svm_val*100:.1f}%")
 
     # ── Random Forest ─────────────────────────────────────────────────────────
-    print(f"\n  Training Random Forest (500 trees, max_depth=15, balanced)...")
+    print(f"\n  Training Random Forest (500 trees, max_depth=12, balanced)...")
     t0 = time.time()
     rf  = RandomForestClassifier(
         n_estimators=500,
-        max_depth=15,
-        min_samples_leaf=2,
+        max_depth=12,
+        min_samples_leaf=4,
         max_features="sqrt",
         class_weight="balanced",
         random_state=RANDOM_SEED,
