@@ -6,23 +6,30 @@ from datetime import datetime
 from scipy.signal import butter, filtfilt, welch, resample
 
 try:
-    from src.patients import PATIENT_REGISTRY
+    from patients import PATIENT_REGISTRY
 except ImportError:
-    print("⚠️  patients.py not found — using single default patient")
-    PATIENT_REGISTRY = [{
-        "id": "P001", "name": "John Molebatsi", "age": 34,
-        "diagnosis": "Temporal Lobe Epilepsy", "ward": "Neuro A", "bed": "Bed 1",
-        "emergency_contact": "Kelebogile Molebatsi", "emergency_phone": "+26771000001",
-        "gps_lat": -23.9571, "gps_lng": 26.8368,
-        "gps_label": "Neuro Ward A, Bed 1, Princess Marina Hospital",
-        "eeg_slice": (0, 20), "live": True,
-    }]
+    try:
+        from src.patients import PATIENT_REGISTRY
+    except ImportError:
+        print("⚠️  patients.py not found — using single default patient")
+        PATIENT_REGISTRY = [{
+            "id": "P001", "name": "John Molebatsi", "age": 34,
+            "diagnosis": "Temporal Lobe Epilepsy", "ward": "Neuro A", "bed": "Bed 1",
+            "emergency_contact": "Kelebogile Molebatsi", "emergency_phone": "+26771000001",
+            "gps_lat": -23.9571, "gps_lng": 26.8368,
+            "gps_label": "Neuro Ward A, Bed 1, Princess Marina Hospital",
+            "eeg_slice": (0, 20), "live": True,
+        }]
 
 try:
-    from src.sms_notifier import send_sms_alert
+    from sms_notifier import send_sms_alert
     SMS_AVAILABLE = True
 except ImportError:
-    SMS_AVAILABLE = False
+    try:
+        from src.sms_notifier import send_sms_alert
+        SMS_AVAILABLE = True
+    except ImportError:
+        SMS_AVAILABLE = False
 
 # --- HARDWARE IMPORTS ---
 try:
@@ -136,6 +143,20 @@ class Brain:
         except Exception as e:
             raise FileNotFoundError(f"Model files missing in {MODEL_PATH}: {e}")
 
+        self.n_features  = int(self.scaler.n_features_in_)
+        self.is_mendeley = (self.n_features >= 76)
+        print(f"📊 Model type: {'Mendeley (%d features, 19ch)' % self.n_features if self.is_mendeley else 'Bonn (4 features, 1ch)'}")
+
+        # Load auto-tuned ensemble weights if available, else fall back to defaults
+        weights_path = os.path.join(MODEL_PATH, "ensemble_weights.pkl")
+        if os.path.exists(weights_path):
+            w = joblib.load(weights_path)
+            self.svm_w = float(w.get("svm_w", 0.4))
+            self.rf_w  = float(w.get("rf_w",  0.6))
+            print(f"📊 Ensemble weights: SVM {self.svm_w:.0%} + RF {self.rf_w:.0%} (auto-tuned)")
+        else:
+            self.svm_w, self.rf_w = 0.4, 0.6
+
         # Track dataset fingerprint so we retrain only when data actually changes
         self._data_fingerprint = self._fingerprint(DATA_PATH)
 
@@ -202,27 +223,117 @@ class Brain:
     # FEATURE EXTRACTION & PREDICTION (unchanged)
     # ------------------------------------------------------------------
     def extract_features(self, data):
+        """13-feature Bonn extractor — must stay in sync with train_and_export.py."""
+        from scipy.stats import skew, kurtosis as _kurtosis
         nyq  = 0.5 * TARGET_FS
         b, a = butter(4, [0.5 / nyq, 45 / nyq], btype="band")
-        filt = filtfilt(b, a, data)
+        filt   = filtfilt(b, a, data)
         f, psd = welch(filt, fs=TARGET_FS, nperseg=TARGET_FS)
         bp = np.array([
             np.mean(psd[(f >= 1)  & (f <= 4)]),
             np.mean(psd[(f >= 4)  & (f <= 8)]),
             np.mean(psd[(f >= 8)  & (f <= 13)]),
             np.mean(psd[(f >= 13) & (f <= 30)]),
+            np.mean(psd[(f >= 30) & (f <= 45)]),
         ])
-        total = bp.sum()
-        if total > 0:
-            bp = bp / total  # Option A: relative band power (matches training)
-        return bp.tolist()
+        total   = bp.sum()
+        bp_norm = bp / total if total > 0 else bp
+
+        d1, d2   = np.diff(data), np.diff(np.diff(data))
+        var_x    = np.var(data) + 1e-10
+        var_d1   = np.var(d1)   + 1e-10
+        var_d2   = np.var(d2)   + 1e-10
+        activity   = float(var_x)
+        mobility   = float(np.sqrt(var_d1 / var_x))
+        complexity = float(np.sqrt(var_d2 / var_d1) / (mobility + 1e-10))
+        sk   = float(skew(data))
+        kurt = float(_kurtosis(data))
+        rms  = float(np.sqrt(np.mean(data ** 2)))
+        zcr  = float(((data[:-1] * data[1:]) < 0).sum() / len(data))
+        p_n  = psd / (psd.sum() + 1e-10)
+        sent = float(-np.sum(p_n * np.log2(p_n + 1e-10)) / np.log2(len(p_n) + 1))
+
+        return np.concatenate([bp_norm, [activity, mobility, complexity,
+                                         sk, kurt, rms, zcr, sent]]).tolist()
 
     def predict(self, features):
         x_scaled = self.scaler.transform([features])
         p_svm    = self.svm.predict_proba(x_scaled)[0]
         p_rf     = self.rf.predict_proba([features])[0]
-        combined = (0.4 * p_svm) + (0.6 * p_rf)
+        combined = self.svm_w * p_svm + self.rf_w * p_rf
         return int(np.argmax(combined)), float(np.max(combined))
+
+    _MENDELEY_FS = 500
+    _WIN_SIZE    = 4097
+    _N_CH        = 19
+    _NPERSEG     = 128
+
+    def extract_features_mendeley(self, sample):
+        """247-feature extraction from a (19, 500) Mendeley sample.
+        Must stay in sync with extract_features() in train_mendeley.py.
+        Per channel: 5 band powers (Option A) + 8 statistical = 13 features × 19 = 247.
+        """
+        from scipy.stats import skew, kurtosis as _kurtosis
+        nyq  = 0.5 * TARGET_FS
+        b, a = butter(4, [0.5 / nyq, 45 / nyq], btype="band")
+        all_feats = []
+        for ch in range(self._N_CH):
+            sig   = sample[ch]
+            n_new = int(len(sig) * TARGET_FS / self._MENDELEY_FS)
+            sig_r = resample(sig, n_new)
+            reps  = (self._WIN_SIZE // len(sig_r)) + 1
+            sig_t = np.tile(sig_r, reps)[:self._WIN_SIZE]
+
+            # Band powers (5) — Option A normalised
+            filt   = filtfilt(b, a, sig_t)
+            f, psd = welch(filt, fs=TARGET_FS, nperseg=self._NPERSEG)
+            bp = np.array([
+                np.mean(psd[(f >= 1)  & (f <= 4)]),
+                np.mean(psd[(f >= 4)  & (f <= 8)]),
+                np.mean(psd[(f >= 8)  & (f <= 13)]),
+                np.mean(psd[(f >= 13) & (f <= 30)]),
+                np.mean(psd[(f >= 30) & (f <= 45)]),
+            ])
+            total = bp.sum()
+            bp_norm = bp / total if total > 0 else bp
+
+            # Hjorth parameters
+            d1, d2   = np.diff(sig_r), np.diff(np.diff(sig_r))
+            var_x    = np.var(sig_r)  + 1e-10
+            var_d1   = np.var(d1)     + 1e-10
+            var_d2   = np.var(d2)     + 1e-10
+            activity   = float(var_x)
+            mobility   = float(np.sqrt(var_d1 / var_x))
+            complexity = float(np.sqrt(var_d2 / var_d1) / (mobility + 1e-10))
+
+            # Statistical features
+            sk   = float(skew(sig_r))
+            kurt = float(_kurtosis(sig_r))
+            rms  = float(np.sqrt(np.mean(sig_r ** 2)))
+            zcr  = float(((sig_r[:-1] * sig_r[1:]) < 0).sum() / len(sig_r))
+            p_n  = psd / (psd.sum() + 1e-10)
+            sent = float(-np.sum(p_n * np.log2(p_n + 1e-10)) / np.log2(len(p_n) + 1))
+
+            all_feats.extend(bp_norm.tolist())
+            all_feats.extend([activity, mobility, complexity, sk, kurt, rms, zcr, sent])
+
+        return np.array(all_feats, dtype=np.float32).tolist()
+
+    def extract_features_auto(self, sample):
+        """Dispatch to the right extractor based on loaded model type."""
+        if self.is_mendeley:
+            return self.extract_features_mendeley(sample)
+        return self.extract_features(sample)
+
+    @staticmethod
+    def band_summary(feats):
+        """Return [delta, theta, alpha, beta] for display regardless of feature count."""
+        n = len(feats)
+        if n <= 13:   # Bonn: first 4 are band powers
+            return list(feats[:4])
+        if n == 247:  # Mendeley 19×13 — first 5 per channel are band powers
+            return np.array(feats).reshape(19, 13)[:, :4].mean(axis=0).tolist()
+        return list(feats[:4])
 
 # =============================================================================
 # METRICS
@@ -453,7 +564,7 @@ def compute_and_write_metrics(brain, samples):
 
     for raw_data, label in samples:
         try:
-            feats = brain.extract_features(raw_data)
+            feats = brain.extract_features_auto(raw_data)
             pred, _ = brain.predict(feats)
             X.append(feats)
             y_true.append(label)
@@ -527,42 +638,60 @@ def main():
         return
 
     live_samples = []
-    # Recursively search DATA_PATH for all Bonn-style subfolders (O/N/S/F/Z) anywhere in the tree
-    print(f"📂 Scanning for EEG (.edf/.txt) in: {DATA_PATH}")
-    search_dirs = [DATA_PATH]
-    for root, dirs, _ in os.walk(DATA_PATH):
-        for d in dirs:
-            if d in CLASS_MAP:
-                search_dirs.append(os.path.join(root, d))
-    search_dirs = list(dict.fromkeys(search_dirs))  # deduplicate, preserve order
+    MENDELEY_LABEL_MAP = {0: 0, 1: 1, 2: 2, 3: 1}
 
-    for d in search_dirs:
-        if not os.path.exists(d): continue
-        files = glob.glob(os.path.join(d, "*.txt")) + glob.glob(os.path.join(d, "*.edf"))
-        
-        for f in files:
-            try:
-                # Determine Label based on folder name
-                folder_name = os.path.basename(os.path.dirname(f))
-                label = CLASS_MAP.get(folder_name, 0)
+    if brain.is_mendeley:
+        # ── Mendeley mode: load pre-processed .npy windows ──────────────────
+        npy_dir = (args.data if args.data and os.path.isdir(args.data)
+                   else os.path.join(BASE_DIR, "data", "Mendelay dataset", "Npy_files"))
+        print(f"📂 Mendeley mode — loading .npy files from: {npy_dir}")
+        parts_x, parts_y = [], []
+        for xname, yname in [("x_train.npy", "y_train.npy"), ("x_test.npy", "y_test.npy")]:
+            xp = os.path.join(npy_dir, xname)
+            yp = os.path.join(npy_dir, yname)
+            if os.path.exists(xp) and os.path.exists(yp):
+                parts_x.append(np.load(xp))
+                parts_y.append(np.load(yp))
+                print(f"  ✅ {xname}")
+        if parts_x:
+            X_all = np.concatenate(parts_x, axis=0)
+            y_all = np.concatenate(parts_y, axis=0)
+            for sample, lbl in zip(X_all, y_all):
+                live_samples.append((sample, MENDELEY_LABEL_MAP[int(lbl)]))
+            print(f"✅ Loaded {len(live_samples)} Mendeley samples.")
+        else:
+            print(f"❌ No .npy files found in {npy_dir}")
+    else:
+        # ── Bonn mode: scan for .edf / .txt files ───────────────────────────
+        print(f"📂 Scanning for EEG (.edf/.txt) in: {DATA_PATH}")
+        search_dirs = [DATA_PATH]
+        for root, dirs, _ in os.walk(DATA_PATH):
+            for d in dirs:
+                if d in CLASS_MAP:
+                    search_dirs.append(os.path.join(root, d))
+        search_dirs = list(dict.fromkeys(search_dirs))
 
-                if f.endswith('.edf'):
-                    raw = mne.io.read_raw_edf(f, preload=True, verbose=False)
-                    # AUTO-RESAMPLE: Matches model training rate
-                    if raw.info['sfreq'] != TARGET_FS:
-                        raw.resample(TARGET_FS)
-                    # Grab first channel
-                    data = raw.get_data()[0]
-                    # Ensure we have at least 1 second of data
-                    if len(data) >= TARGET_FS:
-                        live_samples.append((data[:TARGET_FS], label))
-                else:
-                    sig = np.loadtxt(f)
-                    n_new = int(len(sig) * TARGET_FS / 173.61)
-                    sig = resample(sig, n_new)
-                    live_samples.append((sig, label))
-            except Exception as e:
-                print(f"⚠️ Skip {os.path.basename(f)}: {e}")
+        for d in search_dirs:
+            if not os.path.exists(d): continue
+            files = glob.glob(os.path.join(d, "*.txt")) + glob.glob(os.path.join(d, "*.edf"))
+            for f in files:
+                try:
+                    folder_name = os.path.basename(os.path.dirname(f))
+                    label = CLASS_MAP.get(folder_name, 0)
+                    if f.endswith('.edf'):
+                        raw = mne.io.read_raw_edf(f, preload=True, verbose=False)
+                        if raw.info['sfreq'] != TARGET_FS:
+                            raw.resample(TARGET_FS)
+                        data = raw.get_data()[0]
+                        if len(data) >= TARGET_FS:
+                            live_samples.append((data[:TARGET_FS], label))
+                    else:
+                        sig = np.loadtxt(f)
+                        n_new = int(len(sig) * TARGET_FS / 173.61)
+                        sig = resample(sig, n_new)
+                        live_samples.append((sig, label))
+                except Exception as e:
+                    print(f"⚠️ Skip {os.path.basename(f)}: {e}")
 
     if not live_samples:
         print("❌ No valid files found in path.")
@@ -571,8 +700,12 @@ def main():
 
     print(f"✅ Loaded {len(live_samples)} files. Monitoring active.")
 
-    # Evaluate model on all loaded samples and write metrics once at startup
-    compute_and_write_metrics(brain, live_samples)
+    # Compute metrics in the background — does not block the live loop
+    threading.Thread(
+        target=compute_and_write_metrics,
+        args=(brain, live_samples),
+        daemon=True
+    ).start()
 
     idx = 0
     live_state_prev = None
@@ -585,7 +718,7 @@ def main():
     try:
         while True:
             raw_data, _ = live_samples[idx % len(live_samples)]
-            feats = brain.extract_features(raw_data)
+            feats = brain.extract_features_auto(raw_data)
             pred, conf = brain.predict(feats)
             
             state_text = CLASSES[pred]
@@ -630,12 +763,27 @@ def main():
                 row4 = f"T:{datetime.now().strftime('%H:%M:%S')}"
 
             hw.set_alarm(pred)
-            
+
+            # Terminal scan line — one row per sample so you can watch the model run
+            _state_tag = {
+                "Normal":      "  NORMAL    ",
+                "Pre-Seizure": "  PRE-SZ ⚡ ",
+                "Seizure":     "  SEIZURE 🔴",
+            }.get(state_text, f"  {state_text:<10}")
+            bands = Brain.band_summary(feats)
+            print(
+                f"[{idx % len(live_samples):05d}/{len(live_samples)}] "
+                f"{datetime.now().strftime('%H:%M:%S')}  │"
+                f"{_state_tag}  │  Conf: {conf*100:5.1f}%  │  "
+                f"δ:{bands[0]:.3f}  θ:{bands[1]:.3f}  α:{bands[2]:.3f}  β:{bands[3]:.3f}"
+                + (f"  ⏱ {state_duration:.0f}s" if state_duration > 3 else "")
+            )
+
             # LCD/Terminal Display
             hw.update_lcd([
-                "LIVE: John M.", 
-                f"STATE: {state_text}", 
-                f"CONF: {conf*100:.1f}%", 
+                "LIVE: John M.",
+                f"STATE: {state_text}",
+                f"CONF: {conf*100:.1f}%",
                 row4
             ])
             
@@ -663,10 +811,11 @@ def main():
                         p_pred       = pred
                         p_state      = state_text
                         p_conf       = round(conf, 3)
-                        p_delta      = round(float(feats[0]), 4)
-                        p_theta      = round(float(feats[1]), 4)
-                        p_alpha      = round(float(feats[2]), 4)
-                        p_beta       = round(float(feats[3]), 4)
+                        bands        = brain.band_summary(feats)
+                        p_delta      = round(float(bands[0]), 4)
+                        p_theta      = round(float(bands[1]), 4)
+                        p_alpha      = round(float(bands[2]), 4)
+                        p_beta       = round(float(bands[3]), 4)
                         conf_normal  = round(p_conf if p_pred == 0 else 1.0 - p_conf, 3)
                         conf_pre     = round(p_conf if p_pred == 1 else 0.05, 3)
                         conf_seizure = round(p_conf if p_pred == 2 else 0.03, 3)

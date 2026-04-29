@@ -57,9 +57,12 @@ except ImportError:
     SMS_AVAILABLE = False
 
 try:
-    from src.patients import PATIENT_REGISTRY
+    from patients import PATIENT_REGISTRY
 except ImportError:
-    PATIENT_REGISTRY = []
+    try:
+        from src.patients import PATIENT_REGISTRY
+    except ImportError:
+        PATIENT_REGISTRY = []
 
 # =============================================================================
 # CONFIG

@@ -1,0 +1,141 @@
+{
+  "trained_on": "Mendeley Epileptic EEG Dataset",
+  "timestamp": "2026-04-29T15:06:15.433890",
+  "split": "stratified 80/10/10",
+  "n_features": 247,
+  "n_channels": 19,
+  "normalisation": "Option A \u2014 relative band power proportions",
+  "model": "Hybrid SVM (15%) + RF (85%) \u2014 auto-tuned",
+  "training": {
+    "samples": 6232,
+    "accuracy": 0.9989,
+    "f1": 0.9989,
+    "seizure_recall": 1.0,
+    "per_class": {
+      "Normal": {
+        "count": 3116,
+        "precision": 0.999,
+        "recall": 0.998,
+        "f1": 0.999
+      },
+      "Pre-Seizure": {
+        "count": 2516,
+        "precision": 1.0,
+        "recall": 0.999,
+        "f1": 1.0
+      },
+      "Seizure": {
+        "count": 600,
+        "precision": 0.992,
+        "recall": 1.0,
+        "f1": 0.996
+      }
+    }
+  },
+  "validation": {
+    "samples": 779,
+    "accuracy": 0.9769,
+    "f1": 0.9769,
+    "seizure_recall": 0.9733,
+    "overfitting_gap": 0.022,
+    "per_class": {
+      "Normal": {
+        "count": 389,
+        "precision": 0.967,
+        "recall": 0.987,
+        "f1": 0.977
+      },
+      "Pre-Seizure": {
+        "count": 315,
+        "precision": 0.993,
+        "recall": 0.965,
+        "f1": 0.979
+      },
+      "Seizure": {
+        "count": 75,
+        "precision": 0.961,
+        "recall": 0.973,
+        "f1": 0.967
+      }
+    }
+  },
+  "test": {
+    "samples": 779,
+    "accuracy": 0.9769,
+    "f1": 0.9768,
+    "seizure_recall": 1.0,
+    "per_class": {
+      "Normal": {
+        "count": 390,
+        "precision": 0.965,
+        "recall": 0.99,
+        "f1": 0.977
+      },
+      "Pre-Seizure": {
+        "count": 314,
+        "precision": 0.99,
+        "recall": 0.955,
+        "f1": 0.972
+      },
+      "Seizure": {
+        "count": 75,
+        "precision": 0.987,
+        "recall": 1.0,
+        "f1": 0.993
+      }
+    }
+  },
+  "confusion_matrices": {
+    "training": [
+      [
+        3111,
+        0,
+        5
+      ],
+      [
+        2,
+        2514,
+        0
+      ],
+      [
+        0,
+        0,
+        600
+      ]
+    ],
+    "validation": [
+      [
+        384,
+        2,
+        3
+      ],
+      [
+        11,
+        304,
+        0
+      ],
+      [
+        2,
+        0,
+        73
+      ]
+    ],
+    "test": [
+      [
+        386,
+        3,
+        1
+      ],
+      [
+        14,
+        300,
+        0
+      ],
+      [
+        0,
+        0,
+        75
+      ]
+    ]
+  }
+}

@@ -434,7 +434,7 @@ def read_json(path, default=None):
     except Exception:
         return default
 
-@st.cache_data(ttl=REFRESH_INTERVAL)
+@st.cache_data(ttl=2)
 def get_all_patients():
     data = read_json(PATIENTS_JSON, {})
     for pid, pdata in data.items():
@@ -450,7 +450,7 @@ def get_metrics():
 def get_status():
     return read_json(STATUS_JSON, {"phase": "WAITING", "message": "Waiting for Pi..."})
 
-@st.cache_data(ttl=REFRESH_INTERVAL)
+@st.cache_data(ttl=2)
 def get_patient_history(pid):
     path = os.path.join(_JSON_DIR, f"neurowatch_history_{pid}.json")
     data = read_json(path, [])
@@ -1594,7 +1594,7 @@ def _render_header():
     n_seizure = sum(1 for pid, p in ap.items()
                     if p.get("state") == "Seizure" and is_live(pid))
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4 = st.columns(4)
 
     def _card(col, label, val, color, sub):
         col.markdown(f"""<div class="metric-card">
@@ -1617,10 +1617,6 @@ def _render_header():
         </div>""", unsafe_allow_html=True)
     else:
         _card(c4, "Active Seizure", 0, APPLE_GRAY, "None active")
-
-    _card(c5, "Session Total",
-          st.session_state.session_seizures, BLOOD_RED,
-          f"{format_uptime(time.time()-st.session_state.session_start)} uptime")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1836,54 +1832,66 @@ def _render_patient():
     if history.empty:
         st.info("⏳ Recording history… check back in a few seconds.")
     else:
-        tail      = history.tail(300)
-        state_num = tail["state"].map({"Normal": 0, "Pre-Seizure": 1, "Seizure": 2})
+        # Sliding 60-second live window — right edge is always "now"
+        _WINDOW = pd.Timedelta(seconds=60)
+        now     = pd.Timestamp.now()
+        t_start = now - _WINDOW
+        t_end   = now + pd.Timedelta(seconds=3)
+        _xrange = dict(range=[t_start, t_end])
+
+        win = history[history["timestamp"] >= t_start]
+        if win.empty:
+            win = history.tail(40)   # fallback if no data in last 60s
+
+        # ── EEG State Timeline ────────────────────────────────────────────────
+        state_num = win["state"].map({"Normal": 0, "Pre-Seizure": 1, "Seizure": 2})
         cseq      = [APPLE_GREEN if s == "Normal" else APPLE_AMBER if s == "Pre-Seizure"
-                     else BLOOD_RED for s in tail["state"]]
+                     else BLOOD_RED for s in win["state"]]
         fig_s = go.Figure(go.Scatter(
-            x=tail["timestamp"], y=state_num,
+            x=win["timestamp"], y=state_num,
             mode="lines+markers",
-            marker=dict(color=cseq, size=4),
-            line=dict(color="rgba(255,255,255,.07)", width=1),
-            hovertemplate="%{text}<extra></extra>", text=tail["state"],
+            marker=dict(color=cseq, size=5),
+            line=dict(color="rgba(255,255,255,.12)", width=1.5),
+            hovertemplate="%{text}<extra></extra>", text=win["state"],
         ))
-        fig_s.update_layout(**_PL, height=175, uirevision=f"state_{pid}",
-                            title=dict(text="EEG State Timeline",
+        fig_s.update_layout(**_PL, height=175,
+                            title=dict(text="EEG State Timeline  (live · 60 s)",
                                        font=dict(size=12, color=APPLE_LABEL2)),
                             yaxis=dict(tickvals=[0, 1, 2],
                                        ticktext=["Normal", "Pre-Sz", "Seizure"], **_AX),
-                            xaxis=dict(**_AX))
+                            xaxis=dict(**_xrange, **_AX))
         st.plotly_chart(fig_s, use_container_width=True,
                         config={"displayModeBar": False}, key=f"state_{pid}")
 
+        # ── EEG Band Power ────────────────────────────────────────────────────
         band_cols = [c for c in ["delta", "theta", "alpha", "beta"] if c in history.columns]
         if band_cols:
-            t200  = history.tail(200)
             fig_b = go.Figure()
             bc    = {"delta": APPLE_BLUE, "theta": APPLE_AMBER,
                      "alpha": APPLE_GREEN, "beta": BLOOD_RED}
             for b in band_cols:
                 fig_b.add_trace(go.Scatter(
-                    x=t200["timestamp"], y=t200[b], name=b.capitalize(),
+                    x=win["timestamp"], y=win[b], name=b.capitalize(),
                     mode="lines", line=dict(color=bc.get(b, "#fff"), width=1.5)))
-            fig_b.update_layout(**_PL, height=210, uirevision=f"band_{pid}",
-                                title=dict(text="EEG Band Power",
+            fig_b.update_layout(**_PL, height=210,
+                                title=dict(text="EEG Band Power  (live · 60 s)",
                                            font=dict(size=12, color=APPLE_LABEL2)),
-                                xaxis=dict(**_AX), yaxis=dict(**_AX))
+                                xaxis=dict(**_xrange, **_AX), yaxis=dict(**_AX))
             st.plotly_chart(fig_b, use_container_width=True,
                             config={"displayModeBar": False}, key=f"band_{pid}")
 
+        # ── Classifier Confidence ─────────────────────────────────────────────
         fig_c = go.Figure(go.Scatter(
-            x=history.tail(200)["timestamp"],
-            y=history.tail(200)["confidence"] * 100,
+            x=win["timestamp"], y=win["confidence"] * 100,
             mode="lines", fill="tozeroy",
             line=dict(color=APPLE_BLUE, width=1.5),
             fillcolor="rgba(10,132,255,0.07)",
         ))
-        fig_c.update_layout(**_PL, height=155, uirevision=f"conf_{pid}",
-                            title=dict(text="Classifier Confidence (%)",
+        fig_c.update_layout(**_PL, height=155,
+                            title=dict(text="Classifier Confidence (%)  (live · 60 s)",
                                        font=dict(size=12, color=APPLE_LABEL2)),
-                            xaxis=dict(**_AX), yaxis=dict(range=[0, 105], **_AX))
+                            xaxis=dict(**_xrange, **_AX),
+                            yaxis=dict(range=[0, 105], **_AX))
         st.plotly_chart(fig_c, use_container_width=True,
                         config={"displayModeBar": False}, key=f"conf_{pid}")
 

@@ -29,11 +29,11 @@
 #   Hybrid: 40% SVM (RBF) + 60% Random Forest — same blend as main_pi_bios_v15.py
 #   StandardScaler fitted on training set ONLY — no leakage into val or test
 #
-# OUTPUT (saved to models/MODELS_V1/):
-#   scaler_v1.pkl
-#   svm_model_v1.pkl
-#   rf_model_v1.pkl
-#   training_report_v1.json   ← full metrics for all 3 splits
+# OUTPUT (saved to models/MODELS_MENDELEY/):
+#   scaler.pkl
+#   svm_model.pkl
+#   rf_model.pkl
+#   training_report.json   ← full metrics for all 3 splits
 #
 # USAGE:
 #   python train_mendeley.py
@@ -45,12 +45,20 @@ import os, sys, time, json, argparse, warnings
 import numpy as np
 import joblib
 from scipy.signal import butter, filtfilt, welch, resample
+from scipy.stats import skew, kurtosis as scipy_kurtosis
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              f1_score, confusion_matrix, classification_report)
+
+try:
+    from imblearn.over_sampling import SMOTE
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+    print("⚠  imbalanced-learn not found — install with: pip install imbalanced-learn")
 
 warnings.filterwarnings("ignore")
 
@@ -62,8 +70,8 @@ BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 # Where the npy files live  (data/Mendelay dataset/Npy_files/)
 DEFAULT_DATA = os.path.join(BASE_DIR, "data", "Mendelay dataset", "Npy_files")
 
-# Where trained models are saved  (models/MODELS_V1/)
-DEFAULT_OUT  = os.path.join(BASE_DIR, "models", "MODELS_V1")
+# Where trained models are saved  (models/MODELS_MENDELEY/)
+DEFAULT_OUT  = os.path.join(BASE_DIR, "models", "MODELS_MENDELEY")
 
 # =============================================================================
 # CONSTANTS
@@ -75,8 +83,9 @@ N_ORDER      = 4
 F_LOW, F_HIGH = 0.5, 45.0
 NPERSEG      = 128
 N_CHANNELS   = 19
-N_BANDS      = 4
-N_FEATURES   = N_CHANNELS * N_BANDS    # 76
+N_BANDS      = 5        # delta, theta, alpha, beta, gamma
+N_STATS      = 8        # activity, mobility, complexity, skewness, kurtosis, rms, zcr, spectral_entropy
+N_FEATURES   = N_CHANNELS * (N_BANDS + N_STATS)    # 19 × 13 = 247
 
 TRAIN_RATIO  = 0.80
 VAL_RATIO    = 0.10
@@ -137,7 +146,7 @@ def _bandpass(sig, fs):
     return filtfilt(b, a, sig)
 
 def _band_power(sig, fs=TARGET_FS):
-    """Extract [delta, theta, alpha, beta] power from one channel."""
+    """Extract [delta, theta, alpha, beta, gamma] power from one channel."""
     filt   = _bandpass(sig, fs)
     f, psd = welch(filt, fs=fs, nperseg=NPERSEG)
     return np.array([
@@ -145,28 +154,44 @@ def _band_power(sig, fs=TARGET_FS):
         np.mean(psd[(f >= 4)  & (f <= 8)]),
         np.mean(psd[(f >= 8)  & (f <= 13)]),
         np.mean(psd[(f >= 13) & (f <= 30)]),
+        np.mean(psd[(f >= 30) & (f <= 45)]),   # gamma (up to filter cutoff)
     ])
 
 def _normalise(feat_vec):
-    """
-    Option A: divide by sum → relative proportions.
-    Scale-invariant: identical output for same brain state regardless of
-    whether signal is in µV or normalised [-1,+1].
-    """
     total = feat_vec.sum()
     return feat_vec / total if total > 0 else feat_vec
 
+def _hjorth(sig):
+    """Hjorth activity, mobility, complexity."""
+    d1      = np.diff(sig)
+    d2      = np.diff(d1)
+    var_x   = np.var(sig)  + 1e-10
+    var_d1  = np.var(d1)   + 1e-10
+    var_d2  = np.var(d2)   + 1e-10
+    activity   = float(var_x)
+    mobility   = float(np.sqrt(var_d1 / var_x))
+    mob_d1     = float(np.sqrt(var_d2 / var_d1))
+    complexity = float(mob_d1 / (mobility + 1e-10))
+    return activity, mobility, complexity
+
+def _spectral_entropy(psd):
+    """Normalised spectral entropy."""
+    p = psd / (psd.sum() + 1e-10)
+    return float(-np.sum(p * np.log2(p + 1e-10)) / np.log2(len(p) + 1))
+
+def _zcr(sig):
+    return float(((sig[:-1] * sig[1:]) < 0).sum() / len(sig))
+
 def extract_features(sample):
     """
-    Extract 76-feature vector from one Mendeley sample.
-    sample: (19, 500)  — 19 channels × 1 second at 500 Hz
+    Extract 247-feature vector from one Mendeley sample.
+    sample: (19, 500) — 19 channels × 1 second at 500 Hz
 
-    Per channel:
-      1. Resample 500 Hz → 128 Hz
-      2. Tile to WIN_SIZE (4097) for consistent Welch window
-      3. Extract 4 band power values
-      4. Option A normalise → relative proportions
-    Returns (76,) float32 array.
+    Per channel (13 features):
+      Band powers (5): delta, theta, alpha, beta, gamma  — Option A normalised
+      Statistical (8): activity, mobility, complexity,
+                       skewness, kurtosis, rms, zcr, spectral_entropy
+    Returns (247,) float32 array.
     """
     all_feats = []
     for ch in range(N_CHANNELS):
@@ -175,9 +200,29 @@ def extract_features(sample):
         sig_r = resample(sig, n_new)
         reps  = (WIN_SIZE // len(sig_r)) + 1
         sig_t = np.tile(sig_r, reps)[:WIN_SIZE]
-        bp    = _band_power(sig_t)
-        all_feats.append(_normalise(bp))
-    return np.concatenate(all_feats).astype(np.float32)
+
+        # Band powers — Option A normalised
+        bp      = _band_power(sig_t)
+        bp_norm = _normalise(bp)
+
+        # Hjorth parameters on resampled signal
+        act, mob, comp = _hjorth(sig_r)
+
+        # Statistical features
+        sk   = float(skew(sig_r))
+        kurt = float(scipy_kurtosis(sig_r))
+        rms  = float(np.sqrt(np.mean(sig_r ** 2)))
+        zcr  = _zcr(sig_r)
+
+        # Spectral entropy from PSD
+        filt    = _bandpass(sig_t, TARGET_FS)
+        _, psd  = welch(filt, fs=TARGET_FS, nperseg=NPERSEG)
+        sent    = _spectral_entropy(psd)
+
+        all_feats.extend(bp_norm.tolist())
+        all_feats.extend([act, mob, comp, sk, kurt, rms, zcr, sent])
+
+    return np.array(all_feats, dtype=np.float32)
 
 # =============================================================================
 # ── STEP 2: LOAD NPY FILES & BUILD FEATURE MATRIX
@@ -292,24 +337,35 @@ def load_and_extract(data_dir):
 # =============================================================================
 def train(X_train, y_train, X_val, y_val):
     print(f"\n{'─'*65}")
-    print(f"  STEP 3: Training  (StandardScaler + SVM + Random Forest)")
+    print(f"  STEP 3: Training  (StandardScaler + SMOTE + SVM + Random Forest)")
     print(f"{'─'*65}")
 
     # ── Scaler — fitted on train ONLY ────────────────────────────────────────
     print(f"\n  Fitting StandardScaler on {len(X_train)} training samples...")
-    print(f"  ⚠  Scaler is fitted on training set ONLY — no leakage")
     scaler   = StandardScaler()
     X_tr_sc  = scaler.fit_transform(X_train)
-    X_val_sc = scaler.transform(X_val)          # transform only, never fit
+    X_val_sc = scaler.transform(X_val)
 
-    print(f"  Scaler mean range : {scaler.mean_.min():.5f} – {scaler.mean_.max():.5f}")
-    print(f"  Scaler std  range : {scaler.scale_.min():.5f} – {scaler.scale_.max():.5f}")
+    # ── SMOTE — balance classes on scaled training data ───────────────────────
+    if SMOTE_AVAILABLE:
+        print(f"\n  Applying SMOTE to balance classes...")
+        uniq, cnts = np.unique(y_train, return_counts=True)
+        print(f"  Before: { {CLASSES[u]: int(c) for u, c in zip(uniq, cnts)} }")
+        sm = SMOTE(random_state=RANDOM_SEED, k_neighbors=5)
+        X_tr_sc, y_train_bal = sm.fit_resample(X_tr_sc, y_train)
+        uniq2, cnts2 = np.unique(y_train_bal, return_counts=True)
+        print(f"  After : { {CLASSES[u]: int(c) for u, c in zip(uniq2, cnts2)} }")
+        y_train = y_train_bal
+        # Unscaled version for RF (RF doesn't need scaled input)
+        X_train = scaler.inverse_transform(X_tr_sc)
+    else:
+        print(f"  ⚠  SMOTE skipped — install imbalanced-learn for class balancing")
 
     # ── SVM ──────────────────────────────────────────────────────────────────
-    print(f"\n  Training SVM (RBF kernel, C=10, balanced class weights)...")
+    print(f"\n  Training SVM (RBF, C=50, balanced)...")
     t0  = time.time()
     svm = SVC(
-        kernel="rbf", C=10, gamma="scale",
+        kernel="rbf", C=50, gamma="scale",
         probability=True,
         class_weight="balanced",
         random_state=RANDOM_SEED,
@@ -322,11 +378,13 @@ def train(X_train, y_train, X_val, y_val):
           f"Val accuracy: {svm_val*100:.1f}%")
 
     # ── Random Forest ─────────────────────────────────────────────────────────
-    print(f"\n  Training Random Forest (200 trees, max_depth=8, balanced)...")
+    print(f"\n  Training Random Forest (500 trees, max_depth=15, balanced)...")
     t0 = time.time()
     rf  = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=8,
+        n_estimators=500,
+        max_depth=15,
+        min_samples_leaf=2,
+        max_features="sqrt",
         class_weight="balanced",
         random_state=RANDOM_SEED,
         n_jobs=-1,
@@ -334,37 +392,45 @@ def train(X_train, y_train, X_val, y_val):
     rf.fit(X_train, y_train)
     rf_time = time.time() - t0
     rf_val  = accuracy_score(y_val, rf.predict(X_val))
-    print(f"  RF done in {rf_time:.1f}s  |  "
-          f"Val accuracy: {rf_val*100:.1f}%")
+    print(f"  RF done in {rf_time:.1f}s  |  Val accuracy: {rf_val*100:.1f}%")
 
-    # ── Hybrid validation accuracy ────────────────────────────────────────────
-    p_svm    = svm.predict_proba(X_val_sc)
-    p_rf     = rf.predict_proba(X_val)
-    hybrid   = np.argmax(0.4 * p_svm + 0.6 * p_rf, axis=1)
-    hyb_val  = accuracy_score(y_val, hybrid)
-    print(f"\n  Hybrid (40% SVM + 60% RF) val accuracy: {hyb_val*100:.1f}%")
+    # ── Auto-tune ensemble weights on validation set ──────────────────────────
+    print(f"\n  Searching for best SVM/RF blend on validation set...")
+    p_svm_val = svm.predict_proba(X_val_sc)
+    p_rf_val  = rf.predict_proba(X_val)
+    best_w, best_acc = 0.4, 0.0
+    for w in np.arange(0.05, 1.0, 0.05):
+        acc = accuracy_score(y_val, np.argmax(w * p_svm_val + (1-w) * p_rf_val, axis=1))
+        if acc > best_acc:
+            best_acc, best_w = acc, w
+    SVM_W, RF_W = round(best_w, 2), round(1.0 - best_w, 2)
+    hybrid = np.argmax(SVM_W * p_svm_val + RF_W * p_rf_val, axis=1)
+    print(f"  Best blend → SVM {SVM_W:.0%} + RF {RF_W:.0%}  "
+          f"val accuracy: {accuracy_score(y_val, hybrid)*100:.1f}%")
 
     # ── Top 10 feature importances ────────────────────────────────────────────
-    bands = ["delta", "theta", "alpha", "beta"]
+    feat_names = ["delta","theta","alpha","beta","gamma",
+                  "activity","mobility","complexity",
+                  "skewness","kurtosis","rms","zcr","spectral_entropy"]
     top10 = np.argsort(rf.feature_importances_)[::-1][:10]
     print(f"\n  Top 10 features (RF importance):")
     for rank, idx in enumerate(top10, 1):
-        ch   = idx // N_BANDS
-        band = bands[idx % N_BANDS]
+        ch   = idx // (N_BANDS + N_STATS)
+        feat = feat_names[idx % (N_BANDS + N_STATS)]
         imp  = rf.feature_importances_[idx]
-        bar  = "█" * int(imp * 200)
-        print(f"    {rank:2}. ch{ch:02d}-{band:<6}  {imp:.4f}  {bar}")
+        bar  = "█" * int(imp * 300)
+        print(f"    {rank:2}. ch{ch:02d}-{feat:<18}  {imp:.4f}  {bar}")
 
-    return scaler, svm, rf
+    return scaler, svm, rf, SVM_W, RF_W
 
 # =============================================================================
 # ── STEP 4: EVALUATE on all 3 splits
 # =============================================================================
-def evaluate_split(X, y_true, scaler, svm, rf, label):
+def evaluate_split(X, y_true, scaler, svm, rf, label, svm_w=0.4, rf_w=0.6):
     X_sc     = scaler.transform(X)
     p_svm    = svm.predict_proba(X_sc)
     p_rf     = rf.predict_proba(X)
-    combined = 0.4 * p_svm + 0.6 * p_rf
+    combined = svm_w * p_svm + rf_w * p_rf
     y_pred   = np.argmax(combined, axis=1)
     confs    = combined
 
@@ -434,12 +500,15 @@ def evaluate_split(X, y_true, scaler, svm, rf, label):
 # =============================================================================
 # ── STEP 5: SAVE MODELS + REPORT
 # =============================================================================
-def save_models(scaler, svm, rf, train_m, val_m, test_m, out_dir):
+def save_models(scaler, svm, rf, train_m, val_m, test_m, out_dir, svm_w=0.4, rf_w=0.6):
     os.makedirs(out_dir, exist_ok=True)
 
-    joblib.dump(scaler, os.path.join(out_dir, "scaler_v1.pkl"))
-    joblib.dump(svm,    os.path.join(out_dir, "svm_model_v1.pkl"))
-    joblib.dump(rf,     os.path.join(out_dir, "rf_model_v1.pkl"))
+    joblib.dump(scaler, os.path.join(out_dir, "scaler.pkl"))
+    joblib.dump(svm,    os.path.join(out_dir, "svm_model.pkl"))
+    joblib.dump(rf,     os.path.join(out_dir, "rf_model.pkl"))
+    # Save weights so the live engine can load them
+    joblib.dump({"svm_w": svm_w, "rf_w": rf_w},
+                os.path.join(out_dir, "ensemble_weights.pkl"))
 
     # JSON report
     report = {
@@ -449,7 +518,7 @@ def save_models(scaler, svm, rf, train_m, val_m, test_m, out_dir):
         "n_features"   : N_FEATURES,
         "n_channels"   : N_CHANNELS,
         "normalisation": "Option A — relative band power proportions",
-        "model"        : "Hybrid SVM (40%) + RF (60%)",
+        "model"        : f"Hybrid SVM ({svm_w:.0%}) + RF ({rf_w:.0%}) — auto-tuned",
         "training": {
             "samples"      : int(len(train_m["y_true"])),
             "accuracy"     : round(train_m["acc"], 4),
@@ -478,18 +547,17 @@ def save_models(scaler, svm, rf, train_m, val_m, test_m, out_dir):
             "test"      : test_m["cm"].tolist(),
         }
     }
-    report_path = os.path.join(out_dir, "training_report_v1.json")
+    report_path = os.path.join(out_dir, "training_report.json")
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
 
     print(f"\n  ✅ Saved to: {out_dir}")
-    print(f"     scaler_v1.pkl")
-    print(f"     svm_model_v1.pkl")
-    print(f"     rf_model_v1.pkl")
-    print(f"     training_report_v1.json")
+    print(f"     scaler.pkl")
+    print(f"     svm_model.pkl")
+    print(f"     rf_model.pkl")
+    print(f"     training_report.json")
     print(f"\n  To use with main_pi_bios_v15.py:")
     print(f"    python main_pi_bios_v15.py --models \"{out_dir}\"")
-    print(f"    (rename files: drop the _v1 suffix)")
 
     return report
 
@@ -628,30 +696,31 @@ def main():
     print("═"*65)
     print(f"  Data path    : {args.data}")
     print(f"  Output path  : {args.out}")
-    print(f"  Features     : {N_CHANNELS} channels × {N_BANDS} bands = {N_FEATURES}")
+    print(f"  Features     : {N_CHANNELS} channels × {N_BANDS} bands + {N_STATS} stats = {N_FEATURES}")
     print(f"  Split        : Stratified 80 / 10 / 10")
-    print(f"  Normalisation: Option A (relative band power)")
+    print(f"  Normalisation: Option A (relative band power) + statistical features")
+    print(f"  SMOTE        : {'enabled' if SMOTE_AVAILABLE else 'disabled (pip install imbalanced-learn)'}")
     print(f"  Random seed  : {RANDOM_SEED}")
 
     # 1. Load and extract features
     X_train, y_train, X_val, y_val, X_test, y_test = load_and_extract(args.data)
 
     # 2. Train
-    scaler, svm, rf = train(X_train, y_train, X_val, y_val)
+    scaler, svm, rf, svm_w, rf_w = train(X_train, y_train, X_val, y_val)
 
     # 3. Evaluate all 3 splits
     print(f"\n{'─'*65}")
     print(f"  STEP 4: Evaluating all three splits...")
     print(f"{'─'*65}")
-    train_m = evaluate_split(X_train, y_train, scaler, svm, rf, "Train (80%)")
-    val_m   = evaluate_split(X_val,   y_val,   scaler, svm, rf, "Validation (10%)")
-    test_m  = evaluate_split(X_test,  y_test,  scaler, svm, rf, "Test (10%)")
+    train_m = evaluate_split(X_train, y_train, scaler, svm, rf, "Train (80%)", svm_w, rf_w)
+    val_m   = evaluate_split(X_val,   y_val,   scaler, svm, rf, "Validation (10%)", svm_w, rf_w)
+    test_m  = evaluate_split(X_test,  y_test,  scaler, svm, rf, "Test (10%)", svm_w, rf_w)
 
     # 4. Save
     print(f"\n{'─'*65}")
     print(f"  STEP 5: Saving models...")
     print(f"{'─'*65}")
-    report = save_models(scaler, svm, rf, train_m, val_m, test_m, args.out)
+    report = save_models(scaler, svm, rf, train_m, val_m, test_m, args.out, svm_w, rf_w)
 
     # 5. Summary
     print_summary(train_m, val_m, test_m, report)
