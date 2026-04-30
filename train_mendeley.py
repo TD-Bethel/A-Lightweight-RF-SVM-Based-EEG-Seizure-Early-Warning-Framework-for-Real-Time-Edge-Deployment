@@ -21,8 +21,8 @@
 #   3 = Video-detected      →  1 = Pre-Seizure  (behavioural only, no EEG change)
 #
 # FEATURES (per sample):
-#   All 19 channels × 4 bands (delta/theta/alpha/beta) = 76 features
-#   Option A normalisation: each channel's 4 bands divided by their sum
+#   All 19 channels × 13 per-channel features + 171 inter-channel correlations = 418 features
+#   Option A normalisation: band powers divided by their sum per channel
 #   → relative proportions, scale-invariant across any EEG equipment
 #
 # MODEL:
@@ -295,7 +295,7 @@ def load_and_extract(data_dir):
     )
     X_val_raw, X_test_raw, y_val_raw, y_test_raw = train_test_split(
         X_temp, y_temp,
-        test_size=0.5,                    # half of the 20% = 10%
+        test_size=0.5,                    # half of the 20% = 10% each
         random_state=RANDOM_SEED,
         stratify=y_temp,
     )
@@ -366,20 +366,21 @@ def train(X_train, y_train, X_val, y_val):
     X_tr_sc  = scaler.fit_transform(X_train)
     X_val_sc = scaler.transform(X_val)
 
-    # ── SMOTE — balance classes on scaled training data ───────────────────────
-    if SMOTE_AVAILABLE:
-        print(f"\n  Applying SMOTE to balance classes...")
-        uniq, cnts = np.unique(y_train, return_counts=True)
+    # ── SMOTE — only apply if classes are imbalanced (ratio > 1.5:1) ─────────
+    uniq, cnts = np.unique(y_train, return_counts=True)
+    imbalance_ratio = cnts.max() / cnts.min() if cnts.min() > 0 else 1.0
+    if SMOTE_AVAILABLE and imbalance_ratio > 1.5:
+        print(f"\n  Applying SMOTE (imbalance ratio {imbalance_ratio:.1f}:1)...")
         print(f"  Before: { {CLASSES[u]: int(c) for u, c in zip(uniq, cnts)} }")
         sm = SMOTE(random_state=RANDOM_SEED, k_neighbors=5)
         X_tr_sc, y_train_bal = sm.fit_resample(X_tr_sc, y_train)
         uniq2, cnts2 = np.unique(y_train_bal, return_counts=True)
         print(f"  After : { {CLASSES[u]: int(c) for u, c in zip(uniq2, cnts2)} }")
         y_train = y_train_bal
-        # Unscaled version for RF (RF doesn't need scaled input)
         X_train = scaler.inverse_transform(X_tr_sc)
     else:
-        print(f"  ⚠  SMOTE skipped — install imbalanced-learn for class balancing")
+        print(f"\n  SMOTE skipped — classes already balanced "
+              f"(ratio {imbalance_ratio:.1f}:1, threshold 1.5:1)")
 
     # ── SVM ──────────────────────────────────────────────────────────────────
     print(f"\n  Training SVM (RBF, C=10, balanced)...")
@@ -526,7 +527,6 @@ def save_models(scaler, svm, rf, train_m, val_m, test_m, out_dir, svm_w=0.4, rf_
     joblib.dump(scaler, os.path.join(out_dir, "scaler.pkl"))
     joblib.dump(svm,    os.path.join(out_dir, "svm_model.pkl"))
     joblib.dump(rf,     os.path.join(out_dir, "rf_model.pkl"))
-    # Save weights so the live engine can load them
     joblib.dump({"svm_w": svm_w, "rf_w": rf_w},
                 os.path.join(out_dir, "ensemble_weights.pkl"))
 
@@ -700,10 +700,11 @@ def print_summary(train_m, val_m, test_m, report):
     print("╠" + "═"*65 + "╣")
     print(f"║  {ov_msg:<63} ║")
     print("╠" + "─"*65 + "╣")
-    print(f"║  {'Features':<20} {'19 channels × 4 bands = 76 per sample':>43} ║")
+    feat_desc = f"{N_CHANNELS}ch × {N_BANDS+N_STATS} per-ch + {N_CORR} corr = {N_FEATURES}"
+    print(f"║  {'Features':<20} {feat_desc:>43} ║")
     print(f"║  {'Split':<20} {'Stratified 80 / 10 / 10':>43} ║")
     print(f"║  {'Normalisation':<20} {'Option A — relative band proportions':>43} ║")
-    print(f"║  {'Model':<20} {'Hybrid SVM (40%) + RF (60%)':>43} ║")
+    print(f"║  {'Model':<20} {f'Hybrid SVM ({svm_w*100:.0f}%) + RF ({rf_w*100:.0f}%)':>43} ║")
     print("╚" + "═"*65 + "╝")
 
 

@@ -26,6 +26,13 @@ METRICS_JSON     = os.path.join(_JSON_DIR, "neurowatch_metrics.json")
 STATUS_JSON      = os.path.join(_JSON_DIR, "neurowatch_status.json")
 REFRESH_INTERVAL = 5
 
+# Load brain GLB once at startup — base64-encoded for iframe injection
+_brain_glb_path = os.path.join(BASE_DIR, "assets", "human_brain_cerebrum__brainstem.glb")
+_BRAIN_B64 = ""
+if os.path.exists(_brain_glb_path):
+    with open(_brain_glb_path, "rb") as _f:
+        _BRAIN_B64 = base64.b64encode(_f.read()).decode("ascii")
+
 CLASSES = ["Normal", "Pre-Seizure", "Seizure"]
 
 PATIENT_REGISTRY = [
@@ -1058,6 +1065,7 @@ def make_head_brain_threejs(state: str, band_powers: dict,
                       "act": elec_act, "srgb": srgb, "thr": 0.38})
 
     # --- HTML template (no f-string: JS braces kept literal) ---
+    brain_src = (f"data:model/gltf-binary;base64,{_BRAIN_B64}" if _BRAIN_B64 else "data:,")
     return ("""<!DOCTYPE html>
 <html>
 <head>
@@ -1085,6 +1093,7 @@ def make_head_brain_threejs(state: str, band_powers: dict,
 <div id="legend">10-20 EEG · IDW Heatmap</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 const CFG = __CFG__;
 
@@ -1100,7 +1109,7 @@ sl.style.color  = CC[CFG.state]||'#888';
 const scene = new THREE.Scene();
 const W = window.innerWidth, H = window.innerHeight;
 const cam = new THREE.PerspectiveCamera(36, W/H, 0.05, 40);
-cam.position.set(2.1, 0.35, 1.7);
+cam.position.set(1.5, 0.1, 1.2);
 
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
@@ -1110,160 +1119,126 @@ document.body.appendChild(renderer.domElement);
 // ORBIT CONTROLS
 const ctrl = new THREE.OrbitControls(cam, renderer.domElement);
 ctrl.enableDamping=true; ctrl.dampingFactor=0.07;
-ctrl.enablePan=false; ctrl.minDistance=1.3; ctrl.maxDistance=5.5;
+ctrl.enablePan=false; ctrl.minDistance=0.8; ctrl.maxDistance=4.0;
 ctrl.autoRotate=true; ctrl.autoRotateSpeed=0.65;
-ctrl.target.set(0,0.08,0);
+ctrl.target.set(0,0,0);
 
 // LIGHTS
-scene.add(new THREE.AmbientLight(0x182038, 3.2));
-const sun=new THREE.DirectionalLight(0xffffff,2.0);
+scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+const sun=new THREE.DirectionalLight(0xffffff,3.0);
 sun.position.set(3,5,4); scene.add(sun);
-const rim=new THREE.PointLight(0x3366cc,1.5,12);
+const rim=new THREE.PointLight(0x88aaff,2.0,10);
 rim.position.set(-3,2,-1); scene.add(rim);
-const warm=new THREE.PointLight(0x331122,1.0,8);
-warm.position.set(2,-3,3); scene.add(warm);
+const fill=new THREE.DirectionalLight(0xffeedd,1.5);
+fill.position.set(-2,-1,3); scene.add(fill);
 
-// ELECTRODE POSITIONS (Three.js x=LR, y=UP, z=FRONT)
-// Mapped from 10-20 (Python: x=LR, y=AP, z=SI) → threeY=pyZ, threeZ=pyY
-const EP = {
-  Fp1:[-0.30,0.36, 0.88], Fp2:[ 0.30,0.36, 0.88],
-  F7: [-0.82,0.29, 0.49], F3: [-0.51,0.59, 0.62],
-  Fz: [ 0.00,0.72, 0.70], F4: [ 0.51,0.59, 0.62],
-  F8: [ 0.82,0.29, 0.49], T7: [-0.99,0.14, 0.00],
-  C3: [-0.67,0.74, 0.00], Cz: [ 0.00,1.00, 0.00],
-  C4: [ 0.67,0.74, 0.00], T8: [ 0.99,0.14, 0.00],
-  P7: [-0.82,0.29,-0.49], P3: [-0.51,0.59,-0.62],
-  Pz: [ 0.00,0.72,-0.70], P4: [ 0.51,0.59,-0.62],
-  P8: [ 0.82,0.29,-0.49], O1: [-0.30,0.36,-0.88],
-  Oz: [ 0.00,0.36,-0.88], O2: [ 0.30,0.36,-0.88]
-};
-const EE = Object.entries(EP);
-const THR=CFG.thr, SRGB=CFG.srgb;
-const BASE=[0.05,0.07,0.14];
+// BRAIN — region-specific EEG glow mapped to anatomy
+// Emissive colours per state (vivid so they show through the GLB texture)
+const EMCOL={
+  Seizure:       new THREE.Color(1.0, 0.04, 0.0),   // electric red
+  'Pre-Seizure': new THREE.Color(1.0, 0.55, 0.0),   // amber
+  Normal:        new THREE.Color(0.0, 0.18, 0.9),   // calm blue
+}[CFG.state]||new THREE.Color(0,0,0);
 
-function idw(ox,oy,oz){
-  let sw=0,sa=0;
-  for(let k=0;k<EE.length;k++){
-    const p=EE[k][1];
-    const dx=ox-p[0],dy=oy-p[1],dz=oz-p[2];
-    const d2=Math.max(dx*dx+dy*dy+dz*dz,0.004);
-    const w=1/(d2*d2); sw+=w; sa+=(CFG.act[EE[k][0]]||0)*w;
-  }
-  return sa/sw;
-}
-function blendC(act){
-  if(act>THR){
-    const t=Math.min((act-THR)/(1-THR),1),s=t*t*(3-2*t);
-    return [BASE[0]+(SRGB[0]-BASE[0])*s,
-            BASE[1]+(SRGB[1]-BASE[1])*s,
-            BASE[2]+(SRGB[2]-BASE[2])*s];
-  }
-  return BASE.slice();
-}
-
-// HEAD GEOMETRY — deformed unit sphere with vertex colours
-const hGeo=new THREE.SphereGeometry(1.0,72,54);
-const hPos=hGeo.attributes.position;
-const nV=hPos.count;
-const cBuf=new Float32Array(nV*3);
-
-for(let i=0;i<nV;i++){
-  let x=hPos.getX(i),y=hPos.getY(i),z=hPos.getZ(i);
-  const ox=x,oy=y,oz=z;         // unit-sphere coords for IDW
-
-  // Scale to head proportions: taller, narrower LR, shallower AP
-  x*=0.90; y*=1.14; z*=0.87;
-
-  // Nose bump (front-centre, mid-face)
-  const nA=Math.max(0,oz-0.42)*Math.exp(-ox*ox*6)*Math.exp(-(oy+0.08)*(oy+0.08)*4.5);
-  z+=nA*0.19; y-=nA*0.04;
-
-  // Chin taper (lower front)
-  const cA=Math.max(0,oz-0.15)*Math.max(0,-oy-0.52)*Math.exp(-ox*ox*5.5);
-  z+=cA*0.06; y-=cA*0.10;
-
-  // Flat occiput (rear of skull)
-  const oA=Math.max(0,-oz-0.38)*Math.exp(-ox*ox*2)*Math.exp(-(oy-0.18)*(oy-0.18)*2.5);
-  z-=oA*0.07;
-
-  // Brow ridge (forehead-eye transition)
-  const bA=Math.max(0,oz-0.58)*Math.exp(-ox*ox*3.5)*Math.exp(-(oy-0.60)*(oy-0.60)*14);
-  z+=bA*0.055;
-
-  hPos.setXYZ(i,x,y,z);
-
-  // Per-vertex EEG colour
-  const rgb=blendC(idw(ox,oy,oz));
-  cBuf[i*3]=rgb[0]; cBuf[i*3+1]=rgb[1]; cBuf[i*3+2]=rgb[2];
-}
-hGeo.setAttribute('color',new THREE.BufferAttribute(cBuf,3));
-hGeo.computeVertexNormals();
-
-scene.add(new THREE.Mesh(hGeo, new THREE.MeshPhongMaterial({
-  vertexColors:true, transparent:true, opacity:0.60,
-  shininess:85, specular:new THREE.Color(0.28,0.35,0.55),
-  side:THREE.DoubleSide
-})));
-
-// BRAIN — state-tinted inside the glass skull
-const BC={
-  Seizure:    {c:0x7a1010,e:0x3b0000},
-  'Pre-Seizure':{c:0x6a4800,e:0x281a00},
-  Normal:     {c:0x1a3060,e:0x000d28}
-}[CFG.state]||{c:0x203050,e:0x000d1a};
+// Fallback mat (used by procedural backup only)
 const bMat=new THREE.MeshPhongMaterial({
-  color:new THREE.Color(BC.c),emissive:new THREE.Color(BC.e),
-  shininess:32,transparent:true,opacity:0.84
+  color:new THREE.Color(0xb87878),emissive:EMCOL,
+  shininess:32,transparent:true,opacity:0.92
 });
 
-function buildHemi(scX,offX){
-  const g=new THREE.SphereGeometry(0.58,52,36);
-  const p=g.attributes.position;
-  for(let i=0;i<p.count;i++){
-    let x=p.getX(i)*scX*0.96,y=p.getY(i)*1.04,z=p.getZ(i)*0.88;
-    // Gyri surface noise
-    const n=1+0.033*Math.sin(x*27)*Math.cos(y*21)+0.019*Math.sin(z*30)*Math.cos(x*18);
-    p.setXYZ(i,x*n+offX,y*n,z*n);
+// Stores {mat, base} for live pulsing in the render loop
+let brainParts=[];
+
+function regionScore(mc){
+  // mc = world-space mesh centre after the brain is positioned
+  // Brain axes after auto-centre: x=L/R, y=Up, z=Front
+  if(CFG.state==='Seizure'){
+    // Temporal lobes: lateral (|x| large), mid-height, mid-depth
+    const temporal=Math.pow(Math.abs(mc.x),1.2)*
+                   Math.exp(-mc.y*mc.y*3.0)*
+                   Math.exp(-mc.z*mc.z*1.2);
+    // Hippocampus/amygdala: medial-inferior-temporal (low y, moderate x, slightly back)
+    const hippoc=Math.exp(-(Math.abs(mc.x)-0.25)*(Math.abs(mc.x)-0.25)*8)*
+                 Math.exp(-(mc.y+0.2)*(mc.y+0.2)*5)*
+                 Math.exp(-(mc.z+0.1)*(mc.z+0.1)*3);
+    // Frontal spread
+    const frontal=Math.max(0,mc.z)*Math.max(0,mc.y)*0.4;
+    return Math.min(0.08+temporal*2.8+hippoc*3.5+frontal,1.5);
   }
-  g.computeVertexNormals();
-  return new THREE.Mesh(g,bMat);
+  if(CFG.state==='Pre-Seizure'){
+    // Frontal lobe: front (+z), upper (+y)
+    const frontal=Math.max(0,mc.z)*Math.max(0,mc.y+0.1)*1.8;
+    // Early temporal hint
+    const temporal=Math.pow(Math.abs(mc.x),1.2)*
+                   Math.exp(-mc.y*mc.y*4)*
+                   Math.exp(-mc.z*mc.z*1.5)*0.5;
+    return Math.min(0.05+frontal+temporal,1.0);
+  }
+  return 0.04;  // Normal: barely glowing
 }
-scene.add(buildHemi(1,-0.09));  // left hemisphere
-scene.add(buildHemi(1, 0.09));  // right hemisphere
 
-// Cerebellum
-const cGeo=new THREE.SphereGeometry(0.26,32,22);
-const cpArr=cGeo.attributes.position;
-for(let i=0;i<cpArr.count;i++){
-  cpArr.setXYZ(i,cpArr.getX(i)*1.5,cpArr.getY(i)*0.72,cpArr.getZ(i)*0.65-0.50);
+function applyRegionGlow(brain){
+  brain.updateMatrixWorld(true);
+  brain.traverse(function(child){
+    if(!child.isMesh) return;
+    const mBox=new THREE.Box3().setFromObject(child);
+    const mc=new THREE.Vector3();
+    mBox.getCenter(mc);
+    const eInt=regionScore(mc);
+    child.material.emissive=EMCOL.clone();
+    child.material.emissiveIntensity=eInt;
+    child.material.needsUpdate=true;
+    if(CFG.state!=='Normal') brainParts.push({mat:child.material,base:eInt,phase:Math.random()*Math.PI*2});
+  });
 }
-cGeo.computeVertexNormals();
-const cMesh=new THREE.Mesh(cGeo,bMat);
-cMesh.position.y=-0.32; scene.add(cMesh);
 
-// Brainstem
-const bsGeo=new THREE.CylinderGeometry(0.085,0.065,0.40,10);
-bsGeo.computeVertexNormals();
-const bsMesh=new THREE.Mesh(bsGeo,new THREE.MeshPhongMaterial({
-  color:new THREE.Color(BC.c),emissive:new THREE.Color(BC.e),
-  transparent:true,opacity:0.80
-}));
-bsMesh.position.set(0,-0.76,-0.08); scene.add(bsMesh);
-
-// ELECTRODE DOTS on scalp surface
-const dotGeo=new THREE.SphereGeometry(0.026,8,6);
-const actC=new THREE.Color(SRGB[0],SRGB[1],SRGB[2]);
-const idleC=new THREE.Color(0.5,0.5,0.65);
-for(const [nm,p] of EE){
-  const a=CFG.act[nm]||0;
-  const dm=new THREE.Mesh(dotGeo,new THREE.MeshBasicMaterial({
-    color:a>THR?actC.clone().lerp(idleC,1-(a-THR)/(1-THR+0.001)):idleC.clone(),
-    transparent:true,opacity:a>THR?0.95:0.45
-  }));
-  // Place at head surface (apply same linear scaling as head deform)
-  dm.position.set(p[0]*0.90,p[1]*1.14,p[2]*0.87);
-  scene.add(dm);
+function buildFallbackBrain(){
+  function buildHemi(scX,offX){
+    const g=new THREE.SphereGeometry(0.58,52,36);
+    const p=g.attributes.position;
+    for(let i=0;i<p.count;i++){
+      let x=p.getX(i)*scX*0.96,y=p.getY(i)*1.04,z=p.getZ(i)*0.88;
+      const n=1+0.033*Math.sin(x*27)*Math.cos(y*21)+0.019*Math.sin(z*30)*Math.cos(x*18);
+      p.setXYZ(i,x*n+offX,y*n,z*n);
+    }
+    g.computeVertexNormals();
+    return new THREE.Mesh(g,bMat.clone());
+  }
+  scene.add(buildHemi(1,-0.09));
+  scene.add(buildHemi(1, 0.09));
+  const cGeo=new THREE.SphereGeometry(0.26,32,22);
+  const cpArr=cGeo.attributes.position;
+  for(let i=0;i<cpArr.count;i++){
+    cpArr.setXYZ(i,cpArr.getX(i)*1.5,cpArr.getY(i)*0.72,cpArr.getZ(i)*0.65-0.50);
+  }
+  cGeo.computeVertexNormals();
+  const cMesh=new THREE.Mesh(cGeo,bMat.clone());
+  cMesh.position.y=-0.32; scene.add(cMesh);
+  const bsGeo=new THREE.CylinderGeometry(0.085,0.065,0.40,10);
+  bsGeo.computeVertexNormals();
+  const bsMesh=new THREE.Mesh(bsGeo,bMat.clone());
+  bsMesh.position.set(0,-0.76,-0.08); scene.add(bsMesh);
 }
+
+const loader=new THREE.GLTFLoader();
+loader.load(
+  '__BRAIN_SRC__',
+  function(gltf){
+    const brain=gltf.scene;
+    const box=new THREE.Box3().setFromObject(brain);
+    const sz=box.getSize(new THREE.Vector3());
+    const sc=1.10/Math.max(sz.x,sz.y,sz.z);
+    brain.scale.setScalar(sc);
+    box.setFromObject(brain);
+    const ctr=box.getCenter(new THREE.Vector3());
+    brain.position.sub(ctr);
+    brain.position.y+=0.05;
+    scene.add(brain);
+    applyRegionGlow(brain);
+  },
+  undefined,
+  function(){ buildFallbackBrain(); }
+);
 
 // RESIZE
 window.addEventListener('resize',()=>{
@@ -1272,11 +1247,53 @@ window.addEventListener('resize',()=>{
   renderer.setSize(window.innerWidth,window.innerHeight);
 });
 
-// ANIMATE
-(function loop(){requestAnimationFrame(loop);ctrl.update();renderer.render(scene,cam);})();
+// ANIMATE — region-specific blinking
+// Seizure:    focus areas (high base) blink fast ~4 Hz with sharp on/off flash
+//             low-activity areas blink slowly or stay dim
+// Pre-Seizure: frontal areas blink slowly ~1 Hz, everything else stays dim
+(function loop(){
+  requestAnimationFrame(loop);
+  ctrl.update();
+
+  if(brainParts.length>0){
+    const now=Date.now();
+    if(CFG.state==='Seizure'){
+      for(let i=0;i<brainParts.length;i++){
+        const p=brainParts[i];
+        if(p.base<0.15){
+          // Non-focus: constant very dim — shows anatomy without distracting
+          p.mat.emissiveIntensity=p.base*0.3;
+        } else {
+          // Focus region: blink frequency scales with activation strength
+          // hottest regions (temporal/hippoc) blink fastest ~4-5 Hz
+          const freq=0.003+p.base*0.009;
+          const raw=Math.sin(now*freq+p.phase);
+          // Sharp square-ish wave: power 3 creates bright spike + dark gap
+          const blink=Math.pow(Math.max(0,raw),3);
+          p.mat.emissiveIntensity=p.base*(0.05+0.95*blink);
+        }
+      }
+    } else if(CFG.state==='Pre-Seizure'){
+      for(let i=0;i<brainParts.length;i++){
+        const p=brainParts[i];
+        if(p.base<0.2){
+          p.mat.emissiveIntensity=p.base*0.4;
+        } else {
+          // Slower gentle blink ~1 Hz — warning, not full seizure
+          const freq=0.001+p.base*0.002;
+          const raw=Math.sin(now*freq+p.phase);
+          const blink=0.25+0.75*Math.pow(Math.max(0,raw),1.8);
+          p.mat.emissiveIntensity=p.base*blink;
+        }
+      }
+    }
+  }
+
+  renderer.render(scene,cam);
+})();
 </script>
 </body>
-</html>""").replace("__CFG__", cfg)
+</html>""").replace("__CFG__", cfg).replace("__BRAIN_SRC__", brain_src)
 
 
 @st.cache_data(ttl=30)

@@ -20,14 +20,14 @@ from datetime import datetime
 # Or set environment variables: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
 #                               TWILIO_FROM_NUMBER, NEUROWATCH_ALERT_NUMBERS
 # ─────────────────────────────────────────────────────────────────────────────
-TWILIO_ACCOUNT_SID  = os.getenv("TWILIO_ACCOUNT_SID",  "YOUR_TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN   = os.getenv("TWILIO_AUTH_TOKEN",   "YOUR_TWILIO_AUTH_TOKEN")
-TWILIO_FROM_NUMBER  = os.getenv("TWILIO_FROM_NUMBER",  "YOUR_TWILIO_FROM_NUMBER")
+TWILIO_ACCOUNT_SID  = os.getenv("TWILIO_ACCOUNT_SID",  "AC1698dea611ff3dfdf5229ab0c5ced6d8")
+TWILIO_AUTH_TOKEN   = os.getenv("TWILIO_AUTH_TOKEN",   "3c8684b22cce16c0af83a77eddf4be6c")
+TWILIO_FROM_NUMBER  = os.getenv("TWILIO_FROM_NUMBER",  "+14786075237")
 
 # Add every recipient number here (international format, e.g. "+26771234567")
 RECIPIENT_NUMBERS = [
     n.strip()
-    for n in os.getenv("NEUROWATCH_ALERT_NUMBERS", "+1234567890,+1987654321").split(",")
+    for n in os.getenv("NEUROWATCH_ALERT_NUMBERS", "+26774390351, +26771847749").split(",")
     if n.strip()
 ]
 

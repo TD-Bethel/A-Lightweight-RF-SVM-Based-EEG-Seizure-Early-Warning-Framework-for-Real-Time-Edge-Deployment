@@ -1,0 +1,350 @@
+================================================================================
+  NEUROWATCH — RASPBERRY PI 3 SETUP GUIDE
+  Run the monitoring engine + clinician dashboard + patient UI externally
+================================================================================
+
+YOUR SETUP DETAILS (ALREADY CONFIGURED)
+─────────────────────────────────────────
+  Pi Hostname  : theberatsatsipi
+  Pi Username  : theberatsatsipi
+  Pi IP Address: 10.36.112.54
+  USB Path     : /media/theberatsatsipi/0392-7BD9
+  SSH Command  : ssh theberatsatsipi@10.36.112.54
+
+WHAT YOU NEED BEFORE STARTING (FOR A FRESH SETUP)
+───────────────────────────────────────────────────
+  - Raspberry Pi 3 (any model)
+  - MicroSD card (16GB or more, Class 10)
+  - Power supply (5V 2.5A)
+  - Your PC with this USB drive
+  - Internet connection (Wi-Fi or Ethernet)
+  - A free ngrok account: https://ngrok.com (sign up, copy your authtoken)
+
+================================================================================
+  PART 1 — ON YOUR WINDOWS PC (DO THIS FIRST)
+================================================================================
+
+STEP 1 — FLASH THE RASPBERRY PI OS
+────────────────────────────────────
+  1. Download Raspberry Pi Imager from:
+     https://www.raspberrypi.com/software/
+
+  2. Open Raspberry Pi Imager:
+     - Device:    Raspberry Pi 3
+     - OS:        Raspberry Pi OS Lite (64-bit)
+     - Storage:   Your SD card
+
+  3. Click the GEAR icon (settings) before flashing and fill in:
+     - Hostname:        theberatsatsipi
+     - Enable SSH:      YES (use password authentication)
+     - Username:        theberatsatsipi
+     - Password:        choose one and WRITE IT DOWN
+     - Wi-Fi SSID:      your Wi-Fi name
+     - Wi-Fi Password:  your Wi-Fi password
+     - Wi-Fi Country:   your country code (e.g. BW for Botswana)
+
+  4. Click SAVE then WRITE. Wait for it to finish.
+
+  IMPORTANT: Make sure username matches hostname (theberatsatsipi) or you
+  will get "Permission denied" when trying to SSH.
+
+STEP 2 — ENABLE SSH IF IT IS BLOCKED
+──────────────────────────────────────
+  If SSH keeps saying "Permission denied" after flashing:
+  1. Connect a monitor and keyboard to the Pi
+  2. Log in and run:
+       sudo nano /etc/ssh/sshd_config
+  3. Find: PasswordAuthentication no
+     Change to: PasswordAuthentication yes
+  4. Save with Ctrl+X → Y → Enter
+  5. Run: sudo service ssh restart
+
+================================================================================
+  PART 2 — ON THE RASPBERRY PI (SSH FROM YOUR PC)
+================================================================================
+
+STEP 3 — CONNECT TO THE PI
+────────────────────────────
+  On your Windows PC open PowerShell or Command Prompt and type:
+
+       ssh theberatsatsipi@10.36.112.54
+
+  Type your password when asked.
+
+  NOTE: theberatsatsipi.local may not resolve on Windows.
+  Always use the IP address: ssh theberatsatsipi@10.36.112.54
+
+  If the IP has changed (Pi was rebooted on different network):
+  → Connect monitor + keyboard to Pi and run: hostname -I
+  → Use the new IP address shown.
+
+STEP 4 — EXPAND SWAP SPACE (IMPORTANT FOR PI 3 — ONLY 1GB RAM)
+────────────────────────────────────────────────────────────────
+  First install dphys-swapfile (may not be installed by default):
+
+    sudo apt install dphys-swapfile -y
+
+  Then run these commands one at a time:
+
+    sudo dphys-swapfile swapoff
+    sudo sed -i 's/CONF_SWAPSIZE=100/CONF_SWAPSIZE=1024/' /etc/dphys-swapfile
+    sudo dphys-swapfile setup
+    sudo dphys-swapfile swapon
+
+  Verify it worked:
+
+    free -h
+
+  You should see "Swap: 1.0G" or higher in the output.
+  This gives the Pi extra virtual memory so it does not crash.
+
+STEP 5 — UPDATE THE SYSTEM
+────────────────────────────
+    sudo apt update && sudo apt upgrade -y
+    sudo apt install python3-pip python3-venv git tmux -y
+
+STEP 6 — CREATE PYTHON VIRTUAL ENVIRONMENT
+────────────────────────────────────────────
+    python3 -m venv ~/neurowatch_env
+    source ~/neurowatch_env/bin/activate
+
+STEP 7 — INSTALL ALL PYTHON PACKAGES
+──────────────────────────────────────
+  This will take 10-20 minutes on the Pi. Run all at once:
+
+    pip install numpy scipy scikit-learn joblib streamlit \
+                RPi.GPIO RPLCD mne pyedflib \
+                plotly pandas matplotlib seaborn \
+                imbalanced-learn
+
+STEP 8 — INSTALL NGROK
+────────────────────────
+    curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+      | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+
+    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
+      | sudo tee /etc/apt/sources.list.d/ngrok.list
+
+    sudo apt update && sudo apt install ngrok -y
+
+  Now add your ngrok authtoken.
+  Get it from: https://dashboard.ngrok.com/get-started/your-authtoken
+
+    ngrok config add-authtoken PASTE_YOUR_TOKEN_HERE
+
+  NOTE: You can skip this step and come back to it later.
+  The dashboards will still work on the local network without ngrok.
+
+STEP 9 — CREATE THE NGROK CONFIG FILE
+───────────────────────────────────────
+  Run this command to create the config:
+
+    mkdir -p ~/.config/ngrok
+    cat > ~/.config/ngrok/ngrok.yml << 'EOF'
+version: "2"
+tunnels:
+  clinician:
+    proto: http
+    addr: 8501
+  patient:
+    proto: http
+    addr: 8502
+EOF
+
+STEP 10 — TRANSFER THE PROJECT FROM YOUR USB
+──────────────────────────────────────────────
+  Your USB mounts automatically at:
+    /media/theberatsatsipi/0392-7BD9
+
+  Copy the project to the Pi:
+
+    cp -r /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project ~/NeuroWatch_Project
+
+  OR run directly from USB without copying (temporary):
+
+    cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+    source ~/neurowatch_env/bin/activate
+
+  To update the project later (copy a single updated file):
+
+    cp /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project/dashboard_v2.py \
+       ~/NeuroWatch_Project/dashboard_v2.py
+
+  To update the whole project from your Windows PC over the network:
+
+    scp -r "C:\Users\thebe\Documents\EEG_Seizure_Detection - To edit\NeuroWatch_Project" \
+        theberatsatsipi@10.36.112.54:~/NeuroWatch_Project
+
+STEP 11 — CREATE THE STARTUP SCRIPT
+─────────────────────────────────────
+    cat > ~/start_neurowatch.sh << 'EOF'
+#!/bin/bash
+source ~/neurowatch_env/bin/activate
+cd ~/NeuroWatch_Project
+
+# Window 0: monitoring engine
+tmux new-session -d -s neurowatch -n engine
+tmux send-keys -t neurowatch:engine \
+  "python src/main_pi_bios_v15.py --models models/MODELS_PREICTAL" Enter
+
+# Window 1: clinician dashboard (port 8501)
+tmux new-window -t neurowatch -n dashboard
+tmux send-keys -t neurowatch:dashboard \
+  "streamlit run dashboard_v2.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false" Enter
+
+# Window 2: patient mobile UI (port 8502)
+tmux new-window -t neurowatch -n patient
+tmux send-keys -t neurowatch:patient \
+  "streamlit run src/patient_mobile_ui.py --server.port 8502 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false" Enter
+
+# Window 3: ngrok tunnels (makes both dashboards accessible externally)
+tmux new-window -t neurowatch -n ngrok
+sleep 5
+tmux send-keys -t neurowatch:ngrok "ngrok start --all" Enter
+
+echo ""
+echo "  NeuroWatch is running."
+echo "  Clinician dashboard : http://10.36.112.54:8501"
+echo "  Patient UI          : http://10.36.112.54:8502"
+echo "  To see ngrok URLs   : tmux attach -t neurowatch  (Ctrl+B then 3)"
+echo "  Switch windows      : Ctrl+B then 0 / 1 / 2 / 3"
+echo "  Detach (keep running): Ctrl+B then D"
+EOF
+
+    chmod +x ~/start_neurowatch.sh
+
+================================================================================
+  PART 3 — START NEUROWATCH
+================================================================================
+
+STEP 12 — RUN EVERYTHING
+──────────────────────────
+    ~/start_neurowatch.sh
+
+  Access on your local network immediately (no ngrok needed):
+
+    Clinician dashboard : http://10.36.112.54:8501
+    Patient mobile UI   : http://10.36.112.54:8502
+
+  To get external (internet) URLs via ngrok:
+
+    tmux attach -t neurowatch
+
+  Press Ctrl+B then 3 to switch to the ngrok window.
+  You will see two public URLs like:
+
+    https://abc123.ngrok-free.app  →  clinician dashboard
+    https://xyz456.ngrok-free.app  →  patient mobile UI
+
+  Share the first URL with the clinical team.
+  Share the second URL with the patient (works on any phone).
+
+  To detach and leave everything running: Ctrl+B then D
+
+RUNNING MANUALLY (WITHOUT STARTUP SCRIPT)
+──────────────────────────────────────────
+  If you want to run the dashboard manually without tmux:
+
+    source ~/neurowatch_env/bin/activate
+    cd ~/NeuroWatch_Project
+    streamlit run dashboard_v2.py --server.port 8501 --server.address 0.0.0.0 \
+      --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+
+  For patient UI:
+
+    streamlit run src/patient_mobile_ui.py --server.port 8502 --server.address 0.0.0.0 \
+      --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+
+================================================================================
+  PART 4 — AUTO-START ON EVERY BOOT (OPTIONAL)
+================================================================================
+
+STEP 13 — AUTO-START ON BOOT
+──────────────────────────────
+  If you want NeuroWatch to start automatically every time the Pi powers on:
+
+    sudo nano /etc/rc.local
+
+  Add this line just ABOVE the "exit 0" line at the bottom:
+
+    su theberatsatsipi -c "bash /home/theberatsatsipi/start_neurowatch.sh" &
+
+  Save with Ctrl+X, then Y, then Enter.
+
+================================================================================
+  QUICK REFERENCE — USEFUL COMMANDS AFTER SETUP
+================================================================================
+
+  SSH into Pi:               ssh theberatsatsipi@10.36.112.54
+  Start NeuroWatch:          ~/start_neurowatch.sh
+  Attach to session:         tmux attach -t neurowatch
+  Switch windows:            Ctrl+B then 0/1/2/3
+  Detach (keep running):     Ctrl+B then D
+  Stop everything:           tmux kill-session -t neurowatch
+  Check Pi IP address:       hostname -I
+  Check RAM usage:           free -h
+  Check swap usage:          free -h  (look for Swap row)
+  Check CPU temperature:     vcgencmd measure_temp
+  Restart Pi:                sudo reboot
+  Activate Python env:       source ~/neurowatch_env/bin/activate
+
+  Clinician dashboard:       http://10.36.112.54:8501
+  Patient mobile UI:         http://10.36.112.54:8502
+
+================================================================================
+  GPIO WIRING (IF USING HARDWARE ALERTS)
+================================================================================
+
+  Component       Pi GPIO Pin     Physical Pin
+  ─────────────   ───────────     ────────────
+  Green LED       GPIO 27         Pin 13
+  Red LED         GPIO 22         Pin 15
+  Buzzer          GPIO 4          Pin 7
+  Ground          GND             Pin 6 / 9 / 14
+
+  LCD display pins (if connected):
+  RS=GPIO26  E=GPIO19  D4=GPIO13  D5=GPIO6  D6=GPIO5  D7=GPIO20
+
+================================================================================
+  TROUBLESHOOTING
+================================================================================
+
+  "ssh: Could not resolve hostname theberatsatsipi.local"
+  → Use the IP address instead: ssh theberatsatsipi@10.36.112.54
+  → If IP changed, connect monitor to Pi and run: hostname -I
+
+  "Permission denied" when SSHing
+  → Make sure username is theberatsatsipi (not pi)
+  → Check password authentication is enabled:
+    sudo nano /etc/ssh/sshd_config
+    Set: PasswordAuthentication yes
+    Then: sudo service ssh restart
+
+  "dphys-swapfile: command not found"
+  → Run: sudo apt install dphys-swapfile -y
+
+  "pip install fails with no space"
+  → SD card is full. Use a larger card (32GB recommended).
+  → Check space: df -h /
+
+  "streamlit: command not found"
+  → You forgot to activate the venv. Run:
+    source ~/neurowatch_env/bin/activate
+
+  "Failed to fetch dynamically imported module" errors in dashboard
+  → Add these flags to your streamlit command:
+    --server.enableCORS false --server.enableXsrfProtection false
+
+  "ngrok tunnel error"
+  → Check your authtoken: ngrok config check
+  → Re-add it: ngrok config add-authtoken YOUR_TOKEN
+  → Get token from: https://dashboard.ngrok.com/get-started/your-authtoken
+
+  Pi freezes / runs out of memory
+  → Make sure you did Step 4 (swap space).
+  → Reduce streamlit memory: add --server.maxUploadSize 1 to streamlit commands.
+
+================================================================================
+  END OF SETUP GUIDE
+  NeuroWatch — Real-time EEG Seizure Detection System
+================================================================================
