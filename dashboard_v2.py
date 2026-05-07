@@ -24,7 +24,7 @@ _JSON_DIR        = os.path.join(BASE_DIR, "json")
 PATIENTS_JSON    = os.path.join(_JSON_DIR, "neurowatch_patients.json")
 METRICS_JSON     = os.path.join(_JSON_DIR, "neurowatch_metrics.json")
 STATUS_JSON      = os.path.join(_JSON_DIR, "neurowatch_status.json")
-REFRESH_INTERVAL = 5
+REFRESH_INTERVAL = 30
 
 # Load brain GLB once at startup — base64-encoded for iframe injection
 _brain_glb_path = os.path.join(BASE_DIR, "assets", "human_brain_cerebrum__brainstem.glb")
@@ -427,6 +427,19 @@ header{{visibility:hidden;}}
     color: var(--green) !important;
     border-radius: 8px !important;
     font-size: 12px !important;
+}}
+
+/* Smooth fragment rerender — prevents harsh flash on data updates */
+@keyframes nw-fade-in {{
+    from {{ opacity: 0.55; }}
+    to   {{ opacity: 1;    }}
+}}
+[data-testid="stVerticalBlock"] > div {{
+    animation: nw-fade-in 0.4s ease-out;
+}}
+[data-stale="true"] {{
+    opacity: 0.75 !important;
+    transition: opacity 0.4s ease-in-out !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -1380,6 +1393,8 @@ for k, v in [
     ("state_entry_times",{}), ("sound_enabled",True),
     ("navigate_to_patient", False),
     ("refresh_interval", REFRESH_INTERVAL),
+    ("paused_refresh", False),
+    ("paused_interval", REFRESH_INTERVAL),
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
@@ -1488,17 +1503,36 @@ def _render_sidebar():
         {st.session_state.session_seizures}</span>
     </div>""", unsafe_allow_html=True)
 
-    # ── Refresh interval slider ───────────────────────────────────────────────
-    st.markdown('<div class="section-label">Refresh Interval</div>', unsafe_allow_html=True)
+    # ── Refresh interval slider + pause toggle ───────────────────────────────
+    is_paused = st.session_state.get("paused_refresh", False)
+    ri_c1, ri_c2 = st.columns([3, 1])
+    with ri_c1:
+        st.markdown('<div class="section-label">Refresh Interval</div>', unsafe_allow_html=True)
+    with ri_c2:
+        pause_label = "▶" if is_paused else "⏸"
+        pause_help  = "Resume auto-refresh" if is_paused else "Pause auto-refresh"
+        if st.button(pause_label, key="pause_btn", help=pause_help, use_container_width=True):
+            if not is_paused:
+                st.session_state["paused_interval"] = cur_ri
+                st.session_state.refresh_interval   = 86400
+                st.session_state["paused_refresh"]  = True
+            else:
+                st.session_state.refresh_interval  = st.session_state.get("paused_interval", REFRESH_INTERVAL)
+                st.session_state["paused_refresh"] = False
+            st.rerun(scope="app")
+    _ri_opts   = [2, 3, 5, 8, 10, 15, 20, 30, 60]
+    _slider_v  = st.session_state.get("paused_interval", cur_ri) if is_paused else cur_ri
+    _fmt       = (lambda x: f"{x}s  ⏸") if is_paused else (lambda x: f"{x}s")
     new_ri = st.select_slider(
         "Refresh every",
-        options=[2, 3, 5, 8, 10, 15, 20, 30, 60],
-        value=cur_ri if cur_ri in [2,3,5,8,10,15,20,30,60] else 5,
-        format_func=lambda x: f"{x}s",
+        options=_ri_opts,
+        value=_slider_v if _slider_v in _ri_opts else REFRESH_INTERVAL,
+        format_func=_fmt,
         key="ri_slider",
         label_visibility="collapsed",
+        disabled=is_paused,
     )
-    if new_ri != cur_ri:
+    if not is_paused and new_ri != cur_ri:
         st.session_state.refresh_interval = new_ri
         st.rerun(scope="app")   # full rerun so fragments re-register with new interval
 
@@ -2100,7 +2134,7 @@ def _render_metrics():
         ts = datetime.fromisoformat(ts).strftime("%d %b %Y  %H:%M")
     except Exception:
         pass
-    st.caption(f"Trained: {ts}  ·  Bonn University Dataset · SVM / Random Forest")
+    st.caption(f"Trained: {ts}  ·  {metrics.get('dataset', 'Mendeley Epileptic EEG Dataset')}  ·  {metrics.get('model', 'SVM / Random Forest')}")
 
     ks  = ["accuracy", "precision", "recall", "f1", "specificity", "seizure_recall"]
     lbs = ["Accuracy", "Precision", "Recall", "F1 Score", "Specificity", "Seiz. Recall"]

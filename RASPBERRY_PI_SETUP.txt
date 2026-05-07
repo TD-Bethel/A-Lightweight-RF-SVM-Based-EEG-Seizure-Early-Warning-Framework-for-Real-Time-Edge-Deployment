@@ -185,7 +185,7 @@ cd ~/NeuroWatch_Project
 # Window 0: monitoring engine
 tmux new-session -d -s neurowatch -n engine
 tmux send-keys -t neurowatch:engine \
-  "python src/main_pi_bios_v15.py --models models/MODELS_PREICTAL" Enter
+  "python src/main_pi_bios_v15.py --models models/MODELS_MENDELEY" Enter
 
 # Window 1: clinician dashboard (port 8501)
 tmux new-window -t neurowatch -n dashboard

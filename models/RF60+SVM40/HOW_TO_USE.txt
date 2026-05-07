@@ -1,0 +1,13 @@
+Model: RF60+SVM40
+Ensemble: SVM 40% + RF 60%
+Features: 247 -> 75 selected (RF importance)
+Normal threshold: 0.37
+
+-- Run the Pi engine (main system) --
+python src/main_pi_bios_v15.py --models "models/RF60+SVM40"
+
+-- Run the dashboard (doctor view) --
+streamlit run dashboard_v2.py
+
+-- Evaluate on test set --
+python scripts/evaluation/eval_preictal_backup.py --model-dir "models/RF60+SVM40" --data "data/Mendelay dataset/Npy_files_preictal"

@@ -1,4 +1,6 @@
 import os, sys, time, json, argparse, glob, random, warnings, threading, shutil, csv
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from neurowatch_selector import RFImportanceSelector  # needed for joblib unpickling
 import numpy as np
 import joblib
 import mne  # Required: pip install mne
@@ -58,7 +60,7 @@ PATIENTS_JSON = os.path.join(BASE_DIR, "json", "neurowatch_patients.json")
 
 # 3. Set Data and Model Paths
 DATA_PATH = os.path.abspath(args.data) if args.data else os.path.join(BASE_DIR, "data")
-MODEL_PATH = os.path.abspath(args.models) if args.models else os.path.join(BASE_DIR, "models", "MODELS_V1")
+MODEL_PATH = os.path.abspath(args.models) if args.models else os.path.join(BASE_DIR, "models", "MODELS_FS75")
 
 # 4. Model Constants
 TARGET_FS = 128 
@@ -71,7 +73,7 @@ warnings.filterwarnings("ignore")
 
 # Prolonged-state escalation thresholds (seconds)
 PRESEIZURE_LONG_SECONDS = 12
-SEIZURE_LONG_SECONDS = 8
+SEIZURE_LONG_SECONDS = 30
 
 # =============================================================================
 # HARDWARE & ML CORES
@@ -151,11 +153,19 @@ class Brain:
         weights_path = os.path.join(MODEL_PATH, "ensemble_weights.pkl")
         if os.path.exists(weights_path):
             w = joblib.load(weights_path)
-            self.svm_w = float(w.get("svm_w", 0.4))
-            self.rf_w  = float(w.get("rf_w",  0.6))
-            print(f"📊 Ensemble weights: SVM {self.svm_w:.0%} + RF {self.rf_w:.0%} (auto-tuned)")
+            self.svm_w            = float(w.get("svm_w",            0.4))
+            self.rf_w             = float(w.get("rf_w",             0.6))
+            self.normal_threshold = float(w.get("normal_threshold", 0.5))
+            print(f"📊 Ensemble weights: SVM {self.svm_w:.0%} + RF {self.rf_w:.0%} (auto-tuned)  |  Normal threshold: {self.normal_threshold:.2f}")
         else:
-            self.svm_w, self.rf_w = 0.4, 0.6
+            self.svm_w, self.rf_w, self.normal_threshold = 0.4, 0.6, 0.50
+
+        selector_path = os.path.join(MODEL_PATH, "selector.pkl")
+        if os.path.exists(selector_path):
+            self.selector = joblib.load(selector_path)
+            print(f"📊 Feature selector: {self.selector.k} features selected")
+        else:
+            self.selector = None
 
         # Track dataset fingerprint so we retrain only when data actually changes
         self._data_fingerprint = self._fingerprint(DATA_PATH)
@@ -257,11 +267,19 @@ class Brain:
                                          sk, kurt, rms, zcr, sent]]).tolist()
 
     def predict(self, features):
-        x_scaled = self.scaler.transform([features])
-        p_svm    = self.svm.predict_proba(x_scaled)[0]
-        p_rf     = self.rf.predict_proba([features])[0]
+        x_raw    = np.array([features])
+        x_scaled = self.scaler.transform(x_raw)
+        if self.selector is not None:
+            x_svm = self.selector.transform(x_scaled)
+            x_rf  = self.selector.transform(x_raw)
+        else:
+            x_svm = x_scaled
+            x_rf  = x_raw
+        p_svm    = self.svm.predict_proba(x_svm)[0]
+        p_rf     = self.rf.predict_proba(x_rf)[0]
         combined = self.svm_w * p_svm + self.rf_w * p_rf
-        return int(np.argmax(combined)), float(np.max(combined))
+        idx = int(np.argmax(combined))
+        return idx, float(combined[idx])
 
     _MENDELEY_FS = 500
     _WIN_SIZE    = 4097
@@ -280,6 +298,11 @@ class Brain:
         b, a = butter(4, [0.5 / nyq, 45 / nyq], btype="band")
         all_feats = []
         resampled = []
+
+        # Max-abs normalise to [-1, 1] — matches Preprocess.py training transform
+        m = np.amax(np.abs(sample))
+        if m > 0:
+            sample = sample / m
 
         for ch in range(self._N_CH):
             sig   = sample[ch]
@@ -321,15 +344,6 @@ class Brain:
 
             all_feats.extend(bp_norm.tolist())
             all_feats.extend([activity, mobility, complexity, sk, kurt, rms, zcr, sent])
-
-        # Inter-channel correlation (171 pairs) — only for 418-feature model
-        if self.n_features == 418:
-            for i in range(self._N_CH):
-                for j in range(i + 1, self._N_CH):
-                    a_ = resampled[i]; b_ = resampled[j]
-                    n  = min(len(a_), len(b_))
-                    c  = float(np.corrcoef(a_[:n], b_[:n])[0, 1])
-                    all_feats.append(0.0 if np.isnan(c) else c)
 
         return np.array(all_feats, dtype=np.float32).tolist()
 
@@ -657,7 +671,7 @@ def main():
     if brain.is_mendeley:
         # ── Mendeley mode: load pre-processed .npy windows ──────────────────
         npy_dir = (args.data if args.data and os.path.isdir(args.data)
-                   else os.path.join(BASE_DIR, "data", "Mendelay dataset", "Npy_files"))
+                   else os.path.join(BASE_DIR, "data", "Mendelay dataset", "Npy_files_preictal"))
         print(f"📂 Mendeley mode — loading .npy files from: {npy_dir}")
         parts_x, parts_y = [], []
         for xname, yname in [("x_train.npy", "y_train.npy"), ("x_test.npy", "y_test.npy")]:
@@ -732,11 +746,12 @@ def main():
 
     try:
         while True:
-            raw_data, _ = live_samples[idx % len(live_samples)]
+            raw_data, true_label = live_samples[idx % len(live_samples)]
             feats = brain.extract_features_auto(raw_data)
             pred, conf = brain.predict(feats)
-            
+
             state_text = CLASSES[pred]
+            true_text  = CLASSES[true_label]
 
             # Track continuous duration in current state for LCD escalation logic.
             if state_text != live_state_prev:
@@ -747,8 +762,8 @@ def main():
                     _had_seizure = True
                 else:
                     seizure_sms_status = None
-                # "Back to stable" SMS — fires once when recovering from a seizure episode
-                if state_text == "Normal" and _had_seizure and SMS_AVAILABLE and live_patient:
+                # Clearing SMS — only fires if the seizure SMS was actually sent (30s threshold reached)
+                if state_text == "Normal" and _had_seizure and seizure_sms_status is True and SMS_AVAILABLE and live_patient:
                     _had_seizure = False
                     try:
                         send_sms_alert(
@@ -803,10 +818,11 @@ def main():
                 "Seizure":     "  SEIZURE 🔴",
             }.get(state_text, f"  {state_text:<10}")
             bands = Brain.band_summary(feats)
+            _match = "✓" if pred == true_label else f"✗ (true={true_text})"
             print(
                 f"[{idx % len(live_samples):05d}/{len(live_samples)}] "
                 f"{datetime.now().strftime('%H:%M:%S')}  │"
-                f"{_state_tag}  │  Conf: {conf*100:5.1f}%  │  "
+                f"{_state_tag}  │  Conf: {conf*100:5.1f}%  │  {_match}  │  "
                 f"δ:{bands[0]:.3f}  θ:{bands[1]:.3f}  α:{bands[2]:.3f}  β:{bands[3]:.3f}"
                 + (f"  ⏱ {state_duration:.0f}s" if state_duration > 3 else "")
             )

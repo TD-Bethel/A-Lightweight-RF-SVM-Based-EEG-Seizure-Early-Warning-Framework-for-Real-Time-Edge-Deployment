@@ -74,6 +74,8 @@ def _build_message(alert_type: str, patient_name: str, ward: str,
             f"🚨 NEUROWATCH SEIZURE ALERT\n"
             f"Patient : {patient_name} ({patient_id})\n"
             f"Ward    : {ward}\n"
+            f"Time    : {ts}\n"
+            f"Status  : EXPERIENCING A SEIZURE\n"
             f"Confidence: {conf}%\n"
             f"Time    : {ts}\n"
             f"⚡ Immediate attention required!\n"
@@ -95,11 +97,12 @@ def _build_message(alert_type: str, patient_name: str, ward: str,
         )
     elif alert_type == "normal":
         return (
-            f"✅ NEUROWATCH — Patient Stable\n"
+            f"✅ NEUROWATCH — Seizure Cleared\n"
             f"Patient : {patient_name} ({patient_id})\n"
             f"Ward    : {ward}\n"
             f"Time    : {ts}\n"
-            f"Status returned to Normal."
+            f"Status  : Patient has returned to Normal.\n"
+            f"Seizure episode has ended."
         )
     else:
         return f"NeuroWatch alert ({alert_type}) for {patient_name} at {ts}."
