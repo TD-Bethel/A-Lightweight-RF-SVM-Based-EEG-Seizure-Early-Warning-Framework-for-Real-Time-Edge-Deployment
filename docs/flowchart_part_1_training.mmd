@@ -1,0 +1,37 @@
+flowchart TD
+    A["main()"] --> B["load_and_extract(data_dir)"]
+    B --> C["Load x_train/y_train + x_test/y_test"]
+    C --> D["Combine all samples"]
+    D --> E["Stratified split: train / val / test"]
+    E --> F["extract_features(sample)"]
+
+    F --> G["Per EEG channel"]
+    G --> H["Resample 500 Hz -> 128 Hz"]
+    H --> I["Bandpass filter 0.5-45 Hz"]
+    I --> J["Band powers: delta/theta/alpha/beta/gamma"]
+    H --> K["Stats: Hjorth, skew, kurtosis, RMS, ZCR, entropy"]
+    J --> L["247-feature vector"]
+    K --> L
+
+    L --> M["train(...)"]
+    M --> N["StandardScaler"]
+    M --> O["RFImportanceSelector: choose top 75 features"]
+    O --> P["Train SVM"]
+    O --> Q["Train Random Forest"]
+    P --> R["Blend probabilities"]
+    Q --> R
+    R --> S["Tune Normal threshold"]
+
+    S --> T["evaluate_split(...)"]
+    T --> U["Metrics + confusion matrix"]
+    U --> V["save_models(...)"]
+
+    V --> W["scaler.pkl"]
+    V --> X["selector.pkl"]
+    V --> Y["svm_model.pkl"]
+    V --> Z["rf_model.pkl"]
+    V --> AA["ensemble_weights.pkl"]
+    V --> AB["training_report.json"]
+
+    AB --> NEXT["Continues to Figure 2: live Pi monitoring loads these artifacts"]
+

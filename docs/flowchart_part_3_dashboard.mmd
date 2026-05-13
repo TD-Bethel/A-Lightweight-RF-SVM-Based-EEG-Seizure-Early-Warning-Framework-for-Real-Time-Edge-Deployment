@@ -1,0 +1,19 @@
+flowchart TD
+    PREV["From Figure 2: runtime JSON files"] --> AO["neurowatch_status.json"]
+    PREV --> AP["neurowatch_patients.json"]
+    PREV --> AQ["neurowatch_metrics.json"]
+    PREV --> AR["neurowatch_history_P001.json"]
+
+    TRAIN["From Figure 1: training_report.json"] --> AQ
+
+    AO --> AS["dashboard_v2.py: clinician dashboard"]
+    AP --> AS
+    AQ --> AS
+    AR --> AS
+
+    AP --> AT["patient_mobile_ui.py: patient view"]
+    AR --> AT
+
+    AS --> AU["Clinician sees ward overview, patient detail, maps, logs, metrics"]
+    AT --> AV["Patient sees current state, confidence, advice, and alert status"]
+

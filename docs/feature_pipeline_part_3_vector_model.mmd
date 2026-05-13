@@ -1,0 +1,22 @@
+%% Feature pipeline part 3: vector construction and model input.
+flowchart TD
+    A["13 features per channel"] --> B["Concatenate across 19 channels"]
+    B --> C["247-dimensional feature vector<br/>19 x 13 = 247"]
+    C --> D["RF importance selector"]
+    D --> E["Top 75 selected features"]
+    E --> F["StandardScaler branch<br/>SVM input"]
+    E --> G["Unscaled branch<br/>Random Forest input"]
+    F --> H["SVM probability vector<br/>40 percent contribution"]
+    G --> I["RF probability vector<br/>60 percent contribution"]
+    H --> J["Weighted ensemble probability"]
+    I --> J
+
+    classDef input fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef process fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+    classDef model fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#111827;
+    classDef output fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+
+    class A input;
+    class B,C,D,E process;
+    class F,G,H,I model;
+    class J output;

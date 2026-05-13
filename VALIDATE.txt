@@ -1,0 +1,540 @@
+================================================================================
+  NEUROWATCH — COMPLETE CHANGE GUIDE
+  "How to modify any part of the system without Claude by your side"
+================================================================================
+
+This guide tells you EXACTLY what file to open and what line to change for
+every common modification. Each section answers: WHERE, WHAT, and HOW.
+
+================================================================================
+  QUICK FILE MAP — what each file does
+================================================================================
+
+  src/main_pi_bios_v15.py       ← THE BRAIN. Core detection engine.
+                                   Change thresholds, LCD messages, model path here.
+  src/patients.py               ← Patient registry (names, GPS, IDs).
+  src/sms_notifier.py           ← SMS alerts via Twilio. Change numbers here.
+  src/patient_mobile_ui.py      ← Mobile Streamlit UI for the patient's phone.
+  src/neurowatch_metrics.py     ← Computes model accuracy metrics from dataset.
+
+  dashboard_v2.py               ← Clinician web dashboard (port 8501).
+  lcd_controller_pi.py          ← Drives the 20x4 physical LCD + LEDs + buzzer.
+  proteus_bridge.py             ← Sends opcodes to Proteus VSM simulator.
+  neurowatch_selector.py        ← Feature selector (used by models). Don't edit.
+
+  scripts/training/
+    train_mendeley_visual.py    ← MAIN TRAINING SCRIPT (Mendeley dataset).
+    train_mendeley.py           ← Simpler training script (no visuals).
+    train_bonn.py               ← Training script for Bonn dataset.
+    train_and_export.py         ← Trains + saves model .pkl files.
+    train_cnn_tensorboard.py    ← CNN training (experimental — not used in Pi).
+
+  scripts/preprocessing/
+    preprocess_preictal.py      ← Extracts pre-ictal windows from EEG recordings.
+
+  scripts/plotting/             ← Visual inspection scripts. Run to see EEG plots.
+  scripts/evaluation/           ← Model accuracy evaluation scripts.
+  scripts/inference/quick_viz.py← Quick visual test of one prediction.
+
+  models/                       ← Trained model files (.pkl). Never edit manually.
+    MODELS_FS75/                ← Current active model set (used by main_pi).
+    RF60+SVM40_C2/              ← Alternative model (two-class variant).
+    RF60+SVM40_C3/              ← Three-class RF+SVM model.
+
+  json/
+    neurowatch_patients.json    ← Live patient state (written by main_pi every tick).
+    neurowatch_status.json      ← Current confidence score (written by main_pi).
+    neurowatch_metrics.json     ← Model accuracy metrics (written by metrics script).
+
+  RASPBERRY_PI_SETUP.txt        ← Full Pi setup and wiring guide.
+
+================================================================================
+  SECTION 1 — CHANGING DETECTION THRESHOLDS
+================================================================================
+
+GOAL: Change how sensitive the seizure alarm is.
+
+FILE: src/main_pi_bios_v15.py
+LINES: look for "PRESEIZURE_LONG_SECONDS" and "SEIZURE_LONG_SECONDS"
+
+  PRESEIZURE_LONG_SECONDS = 12   ← Row 4 shows "TAKE MEDICATION" after 12 s
+  SEIZURE_LONG_SECONDS    = 30   ← SMS sent + "DR NOTIFIED" appears after 30 s
+
+  TO MAKE THE ALARM TRIGGER SOONER:
+    Lower the numbers. Example: SEIZURE_LONG_SECONDS = 15 (alert after 15 s)
+
+  TO AVOID FALSE ALARMS:
+    Raise the numbers. Example: SEIZURE_LONG_SECONDS = 60 (wait 60 s before SMS)
+
+  IMPORTANT: Also update the same two constants in lcd_controller_pi.py
+  so the LCD display shows the escalation message at the same time.
+  They must always match.
+
+  RELATED: Brain.predict() in main_pi_bios_v15.py has a confidence threshold
+  that decides when a "Normal" window becomes "Pre-Seizure". Look for:
+    self.normal_threshold = 0.50
+  Raise this (e.g. 0.65) to require stronger confidence before alarming.
+
+================================================================================
+  SECTION 2 — CHANGING WHICH MODEL IS USED
+================================================================================
+
+FILE: src/main_pi_bios_v15.py
+LINE: MODEL_PATH = ... (look for "MODELS_FS75")
+
+  MODEL_PATH = os.path.join(BASE_DIR, "models", "MODELS_FS75")
+
+  TO SWITCH TO A DIFFERENT MODEL:
+    Change "MODELS_FS75" to the folder name of the model you want.
+    Available model folders are listed in the models/ directory.
+    Example: change to "RF60+SVM40_C3" to use the 3-class model.
+
+  OR at runtime (without editing the file):
+    python src/main_pi_bios_v15.py --models models/RF60+SVM40_C3
+
+  WHAT EACH MODEL FOLDER MUST CONTAIN:
+    scaler.pkl        — feature normaliser (MUST match the training data)
+    svm_model.pkl     — trained Support Vector Machine
+    rf_model.pkl      — trained Random Forest
+    selector.pkl      — optional feature selector (used if present)
+    ensemble_weights.pkl — optional tuned SVM/RF blend weights
+
+  WARNING: You cannot mix model files from different folders. The scaler
+  and models must come from the same training run or predictions will be wrong.
+
+================================================================================
+  SECTION 3 — ADDING OR EDITING A PATIENT
+================================================================================
+
+FILE: src/patients.py   (open this file)
+
+  PATIENT_REGISTRY is a Python list. Each patient is a dictionary ({...}).
+  Copy an existing entry and change the values.
+
+  IMPORTANT FIELDS:
+    "id"         : unique code like "P001", "P002", etc.
+    "name"       : full name shown on dashboard and in SMS
+    "age"        : displayed on dashboard
+    "ward"       : ward name in the hospital
+    "bed"        : bed number
+    "emergency_contact" : name of next-of-kin
+    "emergency_phone"   : phone number for emergency contact
+    "gps_lat"    : GPS latitude for the "Show on Map" link in SMS
+    "gps_lng"    : GPS longitude
+    "gps_label"  : description shown in the map link
+    "eeg_slice"  : (start_second, end_second) — which part of the EEG file to use
+    "live"       : True  → this patient gets real ML predictions
+                   False → this patient shows simulated/demo data on dashboard
+
+  TO ADD A NEW PATIENT:
+    Copy one existing dict block, paste it at the end of the list (before the
+    closing bracket ]), and change all the field values.
+
+  TO CHANGE WHO IS THE LIVE PATIENT:
+    Set "live": True for exactly one patient. Set all others to "live": False.
+    Having two "live" patients will cause both to show the same prediction.
+
+================================================================================
+  SECTION 4 — CHANGING SMS ALERT RECIPIENTS
+================================================================================
+
+FILE: src/sms_notifier.py
+
+  RECIPIENT_NUMBERS = ["+26774390351", "+26771847749"]
+
+  TO ADD A PHONE NUMBER:
+    Add it to the list in international format (+ country code):
+    RECIPIENT_NUMBERS = ["+26774390351", "+26771847749", "+267XXXXXXXX"]
+
+  TO REMOVE A NUMBER:
+    Delete that line from the list.
+
+  COOLDOWN TIMES (how often the same alert can be re-sent):
+    COOLDOWN_SECONDS = {
+        "seizure":    120,   ← 2 minutes between seizure SMS to the same patient
+        "preseizure": 300,   ← 5 minutes between pre-seizure SMS
+        "normal":     600,   ← 10 minutes between "back to normal" SMS
+    }
+    Adjust these if you are getting too many or too few repeated alerts.
+
+  SMS MESSAGE TEXT:
+    Edit the strings inside _build_message() to customise what the SMS says.
+    The variables {patient_name}, {conf}, {ts}, {ward} are filled in automatically.
+
+  TWILIO CREDENTIALS (set in the file or as environment variables):
+    TWILIO_ACCOUNT_SID — from your Twilio dashboard
+    TWILIO_AUTH_TOKEN  — from your Twilio dashboard
+    TWILIO_FROM_NUMBER — the Twilio phone number you bought
+
+================================================================================
+  SECTION 5 — CHANGING THE LCD DISPLAY MESSAGES
+================================================================================
+
+The LCD is 20 columns × 4 rows. Each row is exactly 20 characters.
+
+WHERE THE LCD IS DRIVEN:
+  On Raspberry Pi with real hardware: src/main_pi_bios_v15.py (HardwareManager.update_lcd)
+  On Pi via virtual serial + Proteus: lcd_controller_pi.py (DisplayController.render_state)
+  On Windows via Proteus: proteus_bridge.py sends opcodes → lcd_controller_pi.py renders
+
+CHANGING LIVE MONITORING MESSAGES (Normal/Pre-Seizure/Seizure):
+  FILE: src/main_pi_bios_v15.py
+  SEARCH FOR: hw.update_lcd(    (inside the main() function)
+
+  Normal state example:
+    hw.update_lcd([
+        f"LIVE: {pname}",          ← Row 1: patient name
+        "STATE: Normal",           ← Row 2: detection state
+        f"CONF: {conf_str}",       ← Row 3: confidence percentage
+        ts_str,                    ← Row 4: current timestamp
+    ])
+
+  TO CHANGE: modify the strings inside the list. Keep each string <= 20 chars.
+  Example: change "STATE: Normal" to "EEG: CLEAR" — just replace the string.
+
+CHANGING STARTUP/BOOT MESSAGES:
+  FILE: lcd_controller_pi.py → DisplayController.render_state()
+  Each system state (BOOT, INIT, LOADING, etc.) has its own block.
+  Find the state you want to change (elif state == SystemState.BOOT:) and edit
+  the lcd_string() calls.
+
+CHANGING PROTEUS LCD MESSAGES:
+  Proteus uses opcodes from proteus_bridge.py (BOOT, NORM, WARN, SEIZ, etc.).
+  The Proteus LCD sketch on the microcontroller side maps these to display text.
+  To change what the Proteus LCD shows, edit the Proteus VSM microcontroller code.
+
+================================================================================
+  SECTION 6 — CHANGING THE LED AND BUZZER BEHAVIOUR
+================================================================================
+
+FILE: src/main_pi_bios_v15.py → HardwareManager class
+
+PIN NUMBERS (BCM):
+  PIN_LED_GREEN = 27   ← Green LED
+  PIN_LED_RED   = 22   ← Red LED
+  PIN_BUZZER    = 4    ← Buzzer
+  Change these if you re-wire to different pins.
+
+LED LOGIC (set_alarm method):
+  level 0 = Normal:      Green ON,  Red OFF, buzzer silent
+  level 1 = Pre-Seizure: Green OFF, Red ON,  slow beep
+  level 2 = Seizure:     Green OFF, Red ON,  rapid beep
+
+BUZZER PATTERNS (_buzzer_worker method):
+  Seizure pattern:     int(t * 10) % 2   ← changes every 0.1 s = 5 Hz beep
+  Pre-Seizure pattern: (t % 1.0) < 0.18  ← one 180ms beep per second
+
+  TO CHANGE BUZZER SPEED:
+    Seizure:     raise the multiplier (10 → 20 for 10 Hz faster beep)
+    Pre-Seizure: change 1.0 (period) or 0.18 (pulse width)
+
+LCD CONTROLLER LEDs (on Raspberry Pi running lcd_controller_pi.py):
+  FILE: lcd_controller_pi.py → DisplayController.render_state()
+  GPIO.output(RED_LED, self.blink_state)  — blinks on each 300ms refresh
+  GPIO.output(GREEN_LED, ...)             — controlled by GreenLEDController thread
+  GREEN_BLINK_RATE = 0.5  ← change this to make the green LED blink faster/slower
+
+================================================================================
+  SECTION 7 — RETRAINING THE MODEL
+================================================================================
+
+QUICK START:
+  1. Put new .edf or .npy EEG files into the data/ folder (correct class subfolders)
+  2. Run the training script
+  3. The model files in models/ will be updated automatically
+
+TRAINING WITH MENDELEY DATASET (recommended):
+  python scripts/training/train_mendeley_visual.py
+
+  This produces:
+    models/MODELS_MENDELEY/scaler.pkl
+    models/MODELS_MENDELEY/svm_model.pkl
+    models/MODELS_MENDELEY/rf_model.pkl
+    models/MODELS_MENDELEY/selector.pkl
+    models/MODELS_MENDELEY/ensemble_weights.pkl
+
+TRAINING WITH BONN DATASET:
+  python scripts/training/train_bonn.py
+
+KEY PARAMETERS TO CHANGE IN TRAINING SCRIPTS:
+  Look for these near the top of the script:
+
+  n_estimators=300     ← How many trees in the Random Forest. More = better but slower.
+                          Try 100 for quick testing, 500 for maximum accuracy.
+  C=10                 ← SVM regularisation. Higher = tries harder to fit training data.
+                          If overfitting: lower to C=1. If underfitting: raise to C=100.
+  kernel='rbf'         ← SVM kernel type. 'rbf' works for most EEG data.
+                          Other options: 'linear', 'poly', 'sigmoid'
+  test_size=0.2        ← 20% of data used for testing, 80% for training.
+                          Change to 0.3 to test on 30%, or 0.1 to train on 90%.
+  k=75                 ← How many features the selector keeps (out of all computed features).
+                          Lower = simpler/faster model. Raise = potentially more accurate.
+
+SVM + RF BLEND WEIGHTS:
+  Look for "svm_w" and "rf_w" in the training script:
+    svm_w = 0.4   ← SVM contributes 40% to the final vote
+    rf_w  = 0.6   ← RF contributes 60% to the final vote
+  These are saved in ensemble_weights.pkl and loaded by main_pi automatically.
+
+AFTER RETRAINING:
+  Update MODEL_PATH in main_pi_bios_v15.py to point to the new model folder.
+  Or use: python src/main_pi_bios_v15.py --models models/MODELS_MENDELEY
+
+================================================================================
+  SECTION 8 — CHANGING THE DASHBOARD
+================================================================================
+
+FILE: dashboard_v2.py
+
+HOW TO RUN:
+  streamlit run dashboard_v2.py --server.port 8501 --server.address 0.0.0.0
+
+COMMON CHANGES:
+  AUTO-REFRESH RATE: look for "st_autorefresh" or "time.sleep". Change the
+    interval (seconds) to refresh the dashboard more or less frequently.
+
+  COLOUR SCHEME: look for the CSS block starting with "st.markdown(f'''<style>"
+    Change hex colour codes to adjust the dark/light theme.
+
+  PATIENT CARDS: the dashboard reads from json/neurowatch_patients.json
+    which main_pi updates every ~1.5 seconds. Add fields to the JSON by
+    editing the JSON write code in main_pi_bios_v15.py → _write_patients_json()
+
+  CONFIDENCE CHART: the history graph reads from json/neurowatch_history_P001.json
+    Change HISTORY_DOTS (number of points shown) to show more/less history.
+
+PATIENT MOBILE UI (port 8502):
+  FILE: src/patient_mobile_ui.py
+  Same as above but mobile-optimised. Reads the same JSON files.
+  Change HOME_PATIENT_ID = "P001" to show a different patient by default.
+
+================================================================================
+  SECTION 9 — CHANGING VIRTUAL SERIAL / PROTEUS PATHS
+================================================================================
+
+FILE: proteus_bridge.py (top of file)
+FILE: lcd_controller_pi.py (top of file)
+
+Both files use:
+  VIRTUAL_SERIAL_RX = r"C:\Users\thebe\AppData\Local\Temp\vsm_serial_rx.txt"
+  VIRTUAL_SERIAL_TX = r"C:\Users\thebe\AppData\Local\Temp\vsm_serial_tx.txt"
+
+If you change these paths, update BOTH files to the same new paths.
+Also update the Proteus VSM component settings to read/write the same files.
+
+HANDSHAKE PROTOCOL:
+  proteus_bridge.py writes "READY" → lcd_controller_pi.py writes "ACK"
+  If you change either side, update both.
+
+OPCODE TABLE (proteus_bridge.py → lcd_controller_pi.py):
+  Bridge sends  | Controller receives | State shown
+  ───────────────────────────────────────────────────
+  BOOT          | BOOT                | "NeuroWatch v1.3 / System Booting"
+  INIT          | INIT                | "INITIALIZING / Setting Up"
+  LOAD          | LOADING             | "LOADING.... / Reading Data"
+  NORM          | NORMAL              | "LIVE: <name> / STATE: Normal"
+  WARN          | PRE-SEIZURE         | "LIVE: <name> / STATE: Pre-Seizure"
+  SEIZ          | SEIZURE             | "LIVE: <name> / STATE: Seizure"
+  REST          | RESTARTING          | "RESTARTING / Please Wait"
+  HB            | HEARTBEAT           | (no change, keepalive)
+  STOP          | SYSTEM STOPPED      | (returns to WAITING_MODEL)
+
+================================================================================
+  SECTION 10 — ADDING A NEW EEG FEATURE
+================================================================================
+
+WHERE FEATURES ARE COMPUTED:
+  Bonn (1-channel) model: Brain.extract_features() in main_pi_bios_v15.py
+  Mendeley (19-channel):  Brain.extract_features_mendeley() in main_pi_bios_v15.py
+
+  The SAME function must also exist in the training script so that training
+  and prediction use identical features. Check:
+    scripts/training/train_mendeley_visual.py → extract_features_19ch()
+
+HOW TO ADD A NEW FEATURE (example: adding sample entropy):
+  1. Open main_pi_bios_v15.py → Brain.extract_features()
+  2. Compute the new feature at the end of the function:
+       new_feat = my_entropy_function(filt)
+  3. Add it to the returned feature vector:
+       return [... existing features ..., new_feat]
+  4. Do the EXACT same change in the training script so the
+     number of features matches.
+  5. Retrain the model (see Section 7) — old .pkl files cannot be used
+     because they expect the old number of features.
+
+================================================================================
+  SECTION 11 — CHANGING GPIO PIN WIRING
+================================================================================
+
+FILE: src/main_pi_bios_v15.py (for main detection engine)
+  PIN_LED_GREEN, PIN_LED_RED, PIN_BUZZER = 27, 22, 4
+
+FILE: lcd_controller_pi.py (for LCD controller)
+  LCD_RS = 26   LCD_E  = 19
+  LCD_D4 = 13   LCD_D5 = 6   LCD_D6 = 5   LCD_D7 = 20
+  GREEN_LED = 27   RED_LED = 22   BUZZER = 4
+
+Change the number on the right to the BCM GPIO number of the new pin.
+Then rewire the physical connection on the Pi header to match.
+
+BCM vs PHYSICAL PIN:
+  BCM uses the GPIO chip's numbering (4, 6, 13, 19, etc.)
+  Physical uses the board's header position (7, 31, 33, 35, etc.)
+  These are NOT the same. Use BCM — that is what the code uses.
+  Reference: search "Raspberry Pi GPIO pinout" for a diagram.
+
+================================================================================
+  SECTION 12 — RUNNING ON WINDOWS (without Pi hardware)
+================================================================================
+
+The system gracefully skips GPIO calls when RPi.GPIO is not installed.
+You can test the full detection logic on Windows:
+
+  1. Run main_pi_bios_v15.py — it prints LCD output to the terminal.
+  2. Run dashboard_v2.py — open http://localhost:8501 to see the live dashboard.
+  3. Run proteus_bridge.py — writes opcodes to the virtual serial files.
+  4. Run lcd_controller_pi.py — reads those files and prints LCD to terminal
+     (GPIO calls are skipped since RPi.GPIO is not available on Windows).
+
+DATA SOURCE ON WINDOWS:
+  The system reads EEG files from the data/ folder and loops through them.
+  Place .edf files in data/ or .npy files from the Mendeley dataset.
+
+MODEL ON WINDOWS:
+  Same .pkl files work on both Windows and Pi (scikit-learn is cross-platform).
+  Make sure MODEL_PATH points to a folder with the three .pkl files.
+
+================================================================================
+  SECTION 13 — COMMON ERRORS AND FIXES
+================================================================================
+
+ERROR: "Model files missing in models/..."
+  → MODEL_PATH points to a folder that doesn't have scaler.pkl, svm_model.pkl,
+    and rf_model.pkl.
+  FIX: Run the training script first, or change MODEL_PATH to an existing model folder.
+
+ERROR: "patients.py not found — using single default patient"
+  → Python cannot find patients.py.
+  FIX: Make sure patients.py is in the project root folder (same level as this guide).
+
+ERROR: "ValueError: X has n features but model expects m features"
+  → The scaler/model was trained with a different number of features than the
+    extract_features() function currently returns.
+  FIX: Retrain the model after any change to extract_features() or extract_features_mendeley().
+
+ERROR: LCD shows "ghost characters" or garbled text
+  → Power cycle the LCD or call lcd_init() again.
+  → In main_pi: hw._reset_lcd() does this — call it after any crash.
+
+ERROR: "Virtual serial file not found"
+  → The AppData/Temp folder path doesn't exist.
+  FIX: Create the directory, or change VIRTUAL_SERIAL_RX/TX paths in both
+    proteus_bridge.py and lcd_controller_pi.py to a folder that exists.
+
+ERROR: Dashboard shows stale data (clock not updating)
+  → main_pi_bios_v15.py is not running, or is crashing silently.
+  FIX: Run main_pi in a separate terminal and check for error output.
+    python src/main_pi_bios_v15.py
+
+ERROR: "streamlit: command not found" (on Pi)
+  → Virtual environment not activated.
+  FIX: source ~/neurowatch_env/bin/activate
+
+================================================================================
+  SECTION 14 — COMPLETE FILE-BY-FILE COMMENT INDEX
+================================================================================
+
+Every Python file in this project has been annotated with section headers and
+inline comments explaining each block. Look for comment blocks starting with:
+
+  # ============================================================
+  # SECTION N — TITLE
+  # ============================================================
+
+Or in main_pi_bios_v15.py:
+  # ── SECTION: TITLE ─────────────────────────────────────────
+
+These tell you WHAT the section does, WHY it is needed, and HOW TO CHANGE IT.
+
+FILE SECTIONS SUMMARY:
+
+main_pi_bios_v15.py:
+  SECTION: CONFIGURATION & UNIVERSAL PATH SELECTION → all path constants
+  SECTION: HARDWARE & ML CORES → HardwareManager, Brain classes
+  SECTION: FEATURE EXTRACTION → extract_features, extract_features_mendeley
+  SECTION: MAIN LOOP → prediction tick, LCD updates, JSON writing
+  SECTION: BIOS MENU → terminal maintenance interface
+
+lcd_controller_pi.py:
+  SECTION 1 → GPIO pin numbers
+  SECTION 2 → LCD protocol constants
+  SECTION 3 → Timing constants
+  SECTION 4 → Virtual serial file paths
+  SECTION 5 → JSON file paths
+  SECTION 6 → Escalation thresholds
+  SECTION 7 → State machine constants
+  SECTION 8 → Low-level LCD driver functions
+  SECTION 9 → GPIO setup
+  SECTION 10 → Green LED heartbeat controller
+  SECTION 11 → Virtual serial receiver
+  SECTION 12 → Display controller (render logic)
+  SECTION 13 → Main loop
+
+proteus_bridge.py:
+  SECTION 1 → Configuration (file paths, timing)
+  SECTION 2 → Virtual serial handler (file-based serial protocol)
+  SECTION 3 → Proteus bridge (JSON reader + state → opcode logic)
+  SECTION 4 → Entry point
+
+sms_notifier.py:
+  Credentials block → Twilio API keys and recipient numbers
+  Cooldown block → rate limiting per patient/alert type
+  Message templates → what each SMS says
+  send_sms_alert() → main send function
+  send_sms_alert_async() → non-blocking fire-and-forget wrapper
+
+neurowatch_selector.py:
+  RFImportanceSelector class → fits a RF to rank features, selects top-k
+  fit() → trains the ranking RF and stores top-k indices
+  transform() → applies the stored indices to reduce any feature matrix
+
+train_mendeley_visual.py:
+  Configuration block → dataset paths, model output folder, hyperparameters
+  Data loading → reads .npy files from Mendeley dataset
+  Feature extraction → 19-channel feature computation (13 features × 19 ch)
+  Training → trains SVM + RF, cross-validates, tunes ensemble weights
+  Evaluation → prints confusion matrix, accuracy, saves metrics
+  Export → saves .pkl model files for use by main_pi
+
+================================================================================
+  SECTION 15 — STEP-BY-STEP: MAKING A CHANGE SAFELY
+================================================================================
+
+Before changing ANYTHING:
+
+  1. BACKUP: run "git add . && git commit -m 'before my change'" so you can
+     always undo by running "git checkout ." if something breaks.
+     (You're already using git — the .git folder is in the project root.)
+
+  2. IDENTIFY: use this guide to find the exact file and section.
+
+  3. READ: open the file and read the surrounding comments to understand
+     what the code does before touching it.
+
+  4. CHANGE: make the smallest possible change (one number, one string).
+
+  5. TEST: run the relevant script or start the system and verify the change
+     worked as expected.
+
+  6. COMMIT: once the change works, commit it:
+     git add src/main_pi_bios_v15.py
+     git commit -m "Raised seizure threshold to 60s"
+
+  REVERTING A BROKEN CHANGE:
+     git checkout src/main_pi_bios_v15.py
+     This resets the file to the last committed version.
+
+================================================================================
+  END OF GUIDE
+  NeuroWatch v15 — Real-time EEG Seizure Detection System
+================================================================================

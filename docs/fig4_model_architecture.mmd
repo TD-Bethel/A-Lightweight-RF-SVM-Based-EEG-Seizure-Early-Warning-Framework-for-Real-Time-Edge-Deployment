@@ -1,0 +1,36 @@
+%% Clear hybrid RF-SVM model architecture for Figure 3.4.
+flowchart TD
+    A["247 extracted EEG features<br/>19 channels x 13 features"] --> B["RF importance selector<br/>keep top 75 features"]
+
+    B --> C1["SVM branch"]
+    B --> C2["Random Forest branch"]
+
+    C1 --> D1["StandardScaler<br/>fit on training data only"]
+    D1 --> E1["RBF SVM classifier<br/>C = 2, gamma = scale"]
+    E1 --> F1["SVM class probabilities<br/>Normal, Pre-Seizure, Seizure"]
+
+    C2 --> D2["Unscaled selected features<br/>tree models are scale-invariant"]
+    D2 --> E2["Random Forest classifier<br/>500 trees, max depth 5"]
+    E2 --> F2["RF class probabilities<br/>Normal, Pre-Seizure, Seizure"]
+
+    F1 --> G["Weighted probability ensemble"]
+    F2 --> G
+
+    G --> H["0.40 x SVM probability<br/>+ 0.60 x RF probability"]
+    H --> I["Argmax class decision"]
+    I --> J["Normal threshold correction<br/>theta = 0.39<br/>only adjusts Pre-Seizure to Normal"]
+    J --> K["Final state and confidence<br/>Normal / Pre-Seizure / Seizure"]
+
+    classDef input fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef selector fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+    classDef svm fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#111827;
+    classDef rf fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+    classDef ensemble fill:#fef3c7,stroke:#d97706,stroke-width:1px,color:#111827;
+    classDef output fill:#fce7f3,stroke:#db2777,stroke-width:1px,color:#111827;
+
+    class A input;
+    class B selector;
+    class C1,D1,E1,F1 svm;
+    class C2,D2,E2,F2 rf;
+    class G,H,I,J ensemble;
+    class K output;

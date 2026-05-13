@@ -1,0 +1,145 @@
+{
+  "trained_on": "Mendeley Epileptic EEG Dataset",
+  "timestamp": "2026-05-06T11:02:02.992503",
+  "split": "stratified 80/10/10",
+  "n_features": 247,
+  "n_selected": 75,
+  "n_channels": 19,
+  "feature_selector": "RF importance (bootstrap 300 trees)",
+  "normalisation": "Option A -- relative band power proportions",
+  "svm_class_weight": "{0:1.5, 1:1, 2:1}",
+  "normal_threshold": 0.34,
+  "model": "Hybrid SVM (95%) + RF (5%) -- auto-tuned",
+  "training": {
+    "samples": 9348,
+    "accuracy": 0.7991,
+    "f1": 0.7952,
+    "seizure_recall": 0.8803,
+    "per_class": {
+      "Normal": {
+        "count": 3116,
+        "precision": 0.691,
+        "recall": 0.924,
+        "f1": 0.79
+      },
+      "Pre-Seizure": {
+        "count": 3116,
+        "precision": 0.842,
+        "recall": 0.593,
+        "f1": 0.696
+      },
+      "Seizure": {
+        "count": 3116,
+        "precision": 0.919,
+        "recall": 0.88,
+        "f1": 0.899
+      }
+    }
+  },
+  "validation": {
+    "samples": 1168,
+    "accuracy": 0.7603,
+    "f1": 0.7551,
+    "seizure_recall": 0.8869,
+    "overfitting_gap": 0.0388,
+    "per_class": {
+      "Normal": {
+        "count": 390,
+        "precision": 0.655,
+        "recall": 0.851,
+        "f1": 0.74
+      },
+      "Pre-Seizure": {
+        "count": 389,
+        "precision": 0.781,
+        "recall": 0.542,
+        "f1": 0.64
+      },
+      "Seizure": {
+        "count": 389,
+        "precision": 0.882,
+        "recall": 0.887,
+        "f1": 0.885
+      }
+    }
+  },
+  "test": {
+    "samples": 1169,
+    "accuracy": 0.7502,
+    "f1": 0.7453,
+    "seizure_recall": 0.8615,
+    "per_class": {
+      "Normal": {
+        "count": 389,
+        "precision": 0.634,
+        "recall": 0.861,
+        "f1": 0.731
+      },
+      "Pre-Seizure": {
+        "count": 390,
+        "precision": 0.798,
+        "recall": 0.528,
+        "f1": 0.636
+      },
+      "Seizure": {
+        "count": 390,
+        "precision": 0.877,
+        "recall": 0.862,
+        "f1": 0.869
+      }
+    }
+  },
+  "confusion_matrices": {
+    "training": [
+      [
+        2879,
+        139,
+        98
+      ],
+      [
+        1125,
+        1848,
+        143
+      ],
+      [
+        165,
+        208,
+        2743
+      ]
+    ],
+    "validation": [
+      [
+        332,
+        37,
+        21
+      ],
+      [
+        153,
+        211,
+        25
+      ],
+      [
+        22,
+        22,
+        345
+      ]
+    ],
+    "test": [
+      [
+        335,
+        28,
+        26
+      ],
+      [
+        163,
+        206,
+        21
+      ],
+      [
+        30,
+        24,
+        336
+      ]
+    ]
+  }
+}

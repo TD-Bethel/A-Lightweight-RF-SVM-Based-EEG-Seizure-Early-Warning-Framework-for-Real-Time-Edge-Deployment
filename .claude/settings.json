@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(**/*.py)",
+      "Write(**/*.py)",
+      "Edit(**/*.txt)",
+      "Write(**/*.txt)"
+    ]
+  }
+}

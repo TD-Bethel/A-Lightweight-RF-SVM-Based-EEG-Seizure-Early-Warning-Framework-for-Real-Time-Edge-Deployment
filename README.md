@@ -101,10 +101,27 @@ pip install imbalanced-learn joblib matplotlib mne numpy pandas plotly pyedflib 
 ### 2. Train the model
 
 ```bash
+# Standard training (no GUI)
 python scripts/training/train_mendeley.py \
   --data "data/Mendelay dataset/Npy_files_preictal" \
   --out  "models/MODELS_FS75"
+
+# Training with live visualization (6-panel dashboard + saves PNG images)
+python scripts/training/train_mendeley_visual.py \
+  --data "data/Mendelay dataset/Npy_files_preictal" \
+  --out  "models/MODELS_FS75"
 ```
+
+### 2b. Train with PyTorch CNN + TensorBoard
+
+```bash
+# Terminal 1 — start training (saves logs to runs/)
+python scripts/training/train_cnn_tensorboard.py
+
+# Terminal 2 — open TensorBoard in browser while training runs
+tensorboard --logdir runs/
+```
+Then visit http://localhost:6006 to see live loss/accuracy curves, confusion matrix, weight histograms, and the model graph.
 
 ### 3. Run everything
 
@@ -147,6 +164,35 @@ python scripts/inference/quick_viz.py
 ```bash
 python scripts/plotting/plot_results.py
 ```
+
+### Browse preprocessed EEG windows (after pre-ictal extraction)
+```bash
+# All classes — slider browses all ~11,000 samples, background colour shows class
+python scripts/plotting/plot_preprocessed_eeg.py
+
+# Start at a specific sample index
+python scripts/plotting/plot_preprocessed_eeg.py --start 500
+
+# One split only
+python scripts/plotting/plot_preprocessed_eeg.py --split train
+python scripts/plotting/plot_preprocessed_eeg.py --split test
+```
+All 19 channels on one single graph with vertical offsets. Background: green = Normal, orange = Pre-ictal, red = Ictal. Use ◀ ▶ or slider to browse. Save PNG button saves current sample.
+
+---
+
+### Visualise raw EDF files before preprocessing
+```bash
+# List all EDF files and seizure counts (shows which are found/missing)
+python scripts/plotting/plot_raw_edf.py --list
+
+# Interactive picker — prompts for patient and record number
+python scripts/plotting/plot_raw_edf.py
+
+# Direct — e.g. Patient 10, Record 1
+python scripts/plotting/plot_raw_edf.py --patient 10 --record 1
+```
+Shows all 19 channels stacked with coloured bands: green = Normal, orange = Pre-ictal, red = Ictal.
 
 ### Patient desktop UI (Tkinter window)
 ```bash

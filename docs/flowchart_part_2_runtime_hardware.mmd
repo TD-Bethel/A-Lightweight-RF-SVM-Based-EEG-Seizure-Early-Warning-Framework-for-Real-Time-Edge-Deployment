@@ -1,0 +1,18 @@
+flowchart TD
+    PREV["From Figure 1: saved model artifacts"] --> AC["Load model artifacts with joblib"]
+
+    AC --> AD["Read live or test EEG windows"]
+    AD --> AE["Extract same 247 features"]
+    AE --> AF["Scale + select top 75"]
+    AF --> AG["SVM + RF ensemble prediction"]
+    AG --> AH["Brain state: Normal / Pre-Seizure / Seizure"]
+
+    AH --> AJ["Green LED: Normal"]
+    AH --> AK["Red LED: Pre-Seizure or Seizure"]
+    AH --> AL["Buzzer alert patterns"]
+    AH --> AM["20x4 LCD patient/state display"]
+    AH --> AN["Optional SMS alert"]
+
+    AH --> AI["Write runtime JSON files"]
+    AI --> NEXT["Continues to Figure 3: dashboard reads runtime JSON"]
+

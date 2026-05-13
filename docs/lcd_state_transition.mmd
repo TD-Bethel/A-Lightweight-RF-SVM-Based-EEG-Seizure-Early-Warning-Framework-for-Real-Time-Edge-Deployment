@@ -1,0 +1,49 @@
+%% LCD and alert state-transition diagram.
+flowchart TB
+    subgraph ROW1["Detection state displayed on LCD"]
+      direction LR
+      START["Startup<br/>LCD reset<br/>model loading"]
+      NORMAL["Normal<br/>LCD: STATE Normal<br/>green LED ON<br/>buzzer OFF"]
+      PRE["Pre-Seizure<br/>LCD: STATE Pre-Seizure<br/>red LED blinks<br/>buzzer pulse"]
+      MED["Sustained Pre-Seizure<br/>after 12 s<br/>LCD: TAKE MEDICATION"]
+      SEIZ["Seizure<br/>LCD: STATE Seizure<br/>red LED alert<br/>buzzer 5 Hz"]
+    end
+
+    subgraph ROW2["Escalation and recovery behaviour"]
+      direction LR
+      WAIT["Seizure timer<br/>monitor continuous<br/>30 s threshold"]
+      SMSOK["SMS success<br/>LCD: DR NOTIFIED<br/>one alert per episode"]
+      SMSFAIL["SMS failure<br/>LCD: CONTACT DR<br/>manual contact required"]
+      REC["Recovery<br/>model returns Normal<br/>clear timers and alerts"]
+    end
+
+    START --> NORMAL
+    NORMAL -->|"Pre-Seizure prediction"| PRE
+    PRE -->|"sustained 12 s"| MED
+    NORMAL -->|"Seizure prediction"| SEIZ
+    PRE -->|"Seizure prediction"| SEIZ
+    MED -->|"Seizure prediction"| SEIZ
+    PRE -->|"Normal prediction"| NORMAL
+    MED -->|"Normal prediction"| NORMAL
+
+    SEIZ --> WAIT
+    WAIT -->|"30 s + Twilio success"| SMSOK
+    WAIT -->|"30 s + Twilio failure"| SMSFAIL
+    WAIT -->|"Normal prediction"| REC
+    SMSOK -->|"Normal prediction"| REC
+    SMSFAIL -->|"Normal prediction"| REC
+    REC --> NORMAL
+
+    classDef startup fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef normal fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#111827;
+    classDef warning fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+    classDef seizure fill:#fee2e2,stroke:#dc2626,stroke-width:1px,color:#111827;
+    classDef notify fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+    classDef recovery fill:#fef3c7,stroke:#d97706,stroke-width:1px,color:#111827;
+
+    class START startup;
+    class NORMAL normal;
+    class PRE,MED warning;
+    class SEIZ,WAIT seizure;
+    class SMSOK,SMSFAIL notify;
+    class REC recovery;

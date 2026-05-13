@@ -1,0 +1,64 @@
+% Requires:
+% \usepackage{tabularx}
+% \usepackage{booktabs}
+% \usepackage{array}
+% \usepackage{pdflscape}
+% \usepackage{adjustbox}
+
+\begin{landscape}
+\begin{table}[p]
+\centering
+\caption{NeuroWatch end-to-end system pipeline}
+\label{tab:neurowatch-pipeline}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.35}
+\begin{adjustbox}{width=0.98\linewidth,center}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.055\linewidth}
+                             >{\raggedright\arraybackslash}p{0.17\linewidth}
+                             >{\raggedright\arraybackslash}p{0.18\linewidth}
+                             >{\raggedright\arraybackslash}p{0.35\linewidth}
+                             >{\raggedright\arraybackslash}p{0.20\linewidth}}
+\toprule
+\textbf{Stage} & \textbf{Component} & \textbf{Input} & \textbf{Process} & \textbf{Output} \\
+\midrule
+1 & \texttt{train\_mendeley.py} & Mendeley \texttt{.npy} EEG files & Loads training and testing arrays, then combines them into one dataset & Combined EEG dataset \\
+2 & \texttt{load\_and\_extract()} & Combined EEG dataset & Applies stratified train, validation, and test split & Raw train, validation, and test EEG samples \\
+3 & \texttt{extract\_features()} & One 19-channel EEG sample & Resamples, filters, and extracts EEG band power plus statistical features & 247-feature vector per sample \\
+4 & \texttt{RFImportanceSelector} & 247 extracted features & Ranks features using Random Forest importance and keeps the top 75 & Selected feature matrix \\
+5 & \texttt{train()} & Selected training features & Trains SVM and Random Forest models, then blends their probability outputs & Hybrid SVM and Random Forest ensemble \\
+6 & \texttt{evaluate\_split()} & Train, validation, and test features & Computes accuracy, precision, recall, F1-score, specificity, seizure recall, and confusion matrix & Model performance metrics \\
+7 & \texttt{save\_models()} & Trained scaler, selector, models, and metrics & Saves deployable model files and training reports & \texttt{.pkl} files and \texttt{training\_report.json} \\
+8 & \texttt{models/...} & Saved model artifacts & Stores scaler, selector, SVM, RF, and ensemble weights & Reusable trained model package \\
+9 & \texttt{main\_pi\_bios\_v15.py} & Live or test EEG windows plus saved model files & Loads the trained model, extracts matching features, scales/selects them, and predicts brain state & Normal, Pre-Seizure, or Seizure prediction \\
+10 & Raspberry Pi hardware & Predicted brain state & Updates LEDs, buzzer, LCD, and optional SMS alert & Physical patient and doctor alerts \\
+11 & Runtime \texttt{json/} files & Predicted state, confidence, patient details, and history & Writes monitoring results to JSON for other interfaces to read & Status, patient, metrics, and history JSON files \\
+12 & \texttt{dashboard\_v2.py} & Runtime JSON files & Displays ward overview, patient detail, map, logs, and metrics & Clinician-facing monitoring dashboard \\
+13 & \texttt{patient\_mobile\_ui.py} & Patient and history JSON files & Displays simplified patient state, confidence, advice, and alert status & Patient-facing mobile UI \\
+\bottomrule
+\end{tabularx}
+\end{adjustbox}
+\end{table}
+\end{landscape}
+
+\begin{table}[htbp]
+\centering
+\caption{Simplified NeuroWatch data flow}
+\label{tab:neurowatch-simple-flow}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.27\textwidth}
+                            >{\raggedright\arraybackslash}p{0.27\textwidth}
+                            >{\raggedright\arraybackslash}X}
+\toprule
+\textbf{From} & \textbf{To} & \textbf{Meaning} \\
+\midrule
+Training script & Model artifacts & Training creates reusable \texttt{.pkl} model files \\
+Model artifacts & Pi monitoring engine & The live system loads the trained model \\
+Pi monitoring engine & Hardware & Predictions trigger LEDs, buzzer, LCD, and SMS \\
+Pi monitoring engine & Runtime JSON & Predictions are saved for apps to read \\
+Runtime JSON & Clinician dashboard & Doctor sees live patient status and metrics \\
+Runtime JSON & Patient mobile UI & Patient sees simplified current state \\
+\bottomrule
+\end{tabularx}
+\end{table}

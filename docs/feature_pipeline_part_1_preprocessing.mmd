@@ -1,0 +1,15 @@
+%% Feature pipeline part 1: preprocessing.
+flowchart TD
+    A["Raw 1-second EEG window<br/>19 channels x 500 samples<br/>Sampling rate: 500 Hz"] --> B["Max-absolute normalisation<br/>x / max(|x|)"]
+    B --> C["Per-channel resampling<br/>500 Hz to 128 Hz"]
+    C --> D["4th-order zero-phase<br/>Butterworth bandpass filter"]
+    D --> E["Retained EEG band<br/>0.5-45 Hz"]
+    E --> F["Preprocessed 19-channel window<br/>ready for feature extraction"]
+
+    classDef input fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef process fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+    classDef output fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+
+    class A input;
+    class B,C,D,E process;
+    class F output;

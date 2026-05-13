@@ -1,0 +1,27 @@
+%% Feature pipeline part 2: per-channel feature extraction.
+flowchart TD
+    A["One preprocessed EEG channel"] --> B["Welch PSD"]
+    A --> C["Time-domain signal"]
+
+    B --> D["Relative band powers<br/>Delta, Theta, Alpha, Beta, Gamma<br/>5 features"]
+    B --> E["Spectral entropy<br/>1 feature"]
+
+    C --> F["Hjorth parameters<br/>Activity, Mobility, Complexity<br/>3 features"]
+    C --> G["Statistical features<br/>Skewness, Kurtosis, RMS, ZCR<br/>4 features"]
+
+    D --> H["13 features from one channel"]
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I["Repeat independently<br/>for all 19 EEG channels"]
+
+    classDef input fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef spectral fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#111827;
+    classDef temporal fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+    classDef output fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+
+    class A input;
+    class B,D,E spectral;
+    class C,F,G temporal;
+    class H,I output;

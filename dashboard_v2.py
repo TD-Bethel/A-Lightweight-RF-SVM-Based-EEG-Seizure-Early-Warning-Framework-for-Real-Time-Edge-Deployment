@@ -446,8 +446,19 @@ header{{visibility:hidden;}}
 
 # =============================================================================
 # JSON READERS
+# These functions are the ONLY place where JSON files are opened.
+# All other functions call these — never open JSON files directly elsewhere.
+#
+# @st.cache_data(ttl=N) caches the result for N seconds so every Streamlit
+# widget on the page reads from cache rather than hitting the disk every render.
+#   ttl=2           → patients and history update every 2 s (near-real-time)
+#   ttl=REFRESH_INTERVAL → metrics/status update every 30 s (stable data)
+#
+# TO ADD A NEW JSON FILE: create a new get_xxx() function following the same
+# pattern: read_json(path, fallback) with an appropriate ttl= value.
 # =============================================================================
 def read_json(path, default=None):
+    """Read and parse a JSON file. Returns default if missing or malformed."""
     try:
         with open(path, "r") as f:
             return json.load(f)
@@ -456,6 +467,12 @@ def read_json(path, default=None):
 
 @st.cache_data(ttl=2)
 def get_all_patients():
+    """
+    Read neurowatch_patients.json (written by main_pi every ~1.5 s).
+    Fills in GPS coordinates from PATIENT_GPS_FALLBACK if the JSON doesn't have them.
+    Returns a dict: { "P001": {state, conf, patient_name, ...}, "P002": ..., ... }
+    TO CHANGE: edit json/neurowatch_patients.json or the writing code in main_pi.
+    """
     data = read_json(PATIENTS_JSON, {})
     for pid, pdata in data.items():
         if not pdata.get("gps_lat") and pid in PATIENT_GPS_FALLBACK:
@@ -464,14 +481,22 @@ def get_all_patients():
 
 @st.cache_data(ttl=REFRESH_INTERVAL)
 def get_metrics():
+    """Read neurowatch_metrics.json (written by neurowatch_metrics.py or training script)."""
     return read_json(METRICS_JSON, {})
 
 @st.cache_data(ttl=REFRESH_INTERVAL)
 def get_status():
+    """Read neurowatch_status.json. Returns phase/message for the system status header."""
     return read_json(STATUS_JSON, {"phase": "WAITING", "message": "Waiting for Pi..."})
 
 @st.cache_data(ttl=2)
 def get_patient_history(pid):
+    """
+    Read the rolling 30-point prediction history for one patient.
+    File: json/neurowatch_history_P001.json (one file per patient ID).
+    Returns a pandas DataFrame with columns: timestamp, state, conf, label.
+    If the file doesn't exist yet, returns an empty DataFrame.
+    """
     path = os.path.join(_JSON_DIR, f"neurowatch_history_{pid}.json")
     data = read_json(path, [])
     if not data:
@@ -480,6 +505,8 @@ def get_patient_history(pid):
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
+# Set of patient IDs marked as "live" in PATIENT_REGISTRY.
+# Only live patients drive real hardware alerts and SMS.
 _live_pids = {p["id"] for p in PATIENT_REGISTRY if p.get("live")}
 def is_live(pid): return pid in _live_pids
 
@@ -1417,8 +1444,32 @@ _AX = dict(gridcolor=APPLE_BG3, zerolinecolor=APPLE_BORDER)
 
 # =============================================================================
 # FRAGMENT FUNCTIONS  (each auto-refreshes independently every REFRESH_INTERVAL)
+#
+# @st.fragment(run_every=N) makes Streamlit re-run just that function every N
+# seconds without refreshing the whole page. This is what makes the dashboard
+# "live" without a full page reload. The interval is set by the sidebar slider.
+#
+# Tab structure:
+#   _render_sidebar()   → left sidebar: patient list, status, alert log
+#   _render_header()    → top bar: system status + alert counter
+#   _render_overview()  → "Ward Overview" tab: all patient cards
+#   _render_patient()   → "Patient Detail" tab: deep dive on selected patient
+#   _render_map()       → "Ward Map" tab: OpenStreetMap + hospital markers
+#   _render_log()       → "Event Log" tab: timestamped state-change history
+#   _render_metrics()   → "Model Metrics" tab: accuracy, confusion matrix
+#
+# TO CHANGE REFRESH RATE: move the sidebar "Auto-Refresh" slider or change
+# REFRESH_INTERVAL = 30 in the CONFIG section at the top.
 # =============================================================================
 def _sorted_pids_from(ap):
+    """
+    Sort patient IDs so the most urgent patient appears first.
+    Priority tuple: (live_first, -severity)
+      live_first=0 → live patients always appear before demo patients
+      -severity    → within each group, Seizure > Pre-Seizure > Normal
+    PRIORITY dict: {"Seizure": 2, "Pre-Seizure": 1, "Normal": 0}
+    Negated so highest severity sorts first.
+    """
     return sorted(
         ap.keys(),
         key=lambda pid: (
@@ -2178,6 +2229,16 @@ def _render_metrics():
 
 # =============================================================================
 # STATIC LAYOUT  (runs once — tabs are never re-created so selection persists)
+#
+# This block at the bottom is the Streamlit "main" entry point.
+# It creates the sidebar and the five tabs, then calls each @st.fragment
+# render function inside each tab. The fragment functions auto-refresh
+# independently — the outer layout (tabs, sidebar shell) never re-runs.
+#
+# TO ADD A NEW TAB:
+#   1. Create a new _render_newtab() function decorated with @st.fragment
+#   2. Add it to the st.tabs() call (add "  New Tab" to the list)
+#   3. Add: with tab_newtab: _render_newtab()
 # =============================================================================
 with st.sidebar:
     st.markdown('<div class="sidebar-title"> NeuroWatch</div>', unsafe_allow_html=True)

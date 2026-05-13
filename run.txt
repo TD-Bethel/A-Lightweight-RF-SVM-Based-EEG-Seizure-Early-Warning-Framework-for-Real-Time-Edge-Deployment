@@ -1,0 +1,169 @@
+========================================================
+  NeuroWatch — Raspberry Pi Run Commands
+  Updated: May 2026  |  Model: RF60+SVM40_C2
+========================================================
+
+──────────────────────────────────────────────────────
+  1. TAILSCALE SETUP  (first-time only)
+──────────────────────────────────────────────────────
+curl --version
+curl -fsSL https://pkgs.tailscale.com/stable/raspbian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+curl -fsSL https://pkgs.tailscale.com/stable/raspbian/trixie.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
+sudo apt-get update
+sudo apt-get install tailscale
+sudo tailscale up
+tailscale ip -4
+
+──────────────────────────────────────────────────────
+  2. INSTALL DEPENDENCIES  (first-time / after update)
+──────────────────────────────────────────────────────
+pip install -r requirements.txt
+
+──────────────────────────────────────────────────────
+  3. RUN DASHBOARD  (remote monitoring via browser)
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+streamlit run dashboard_v2.py --server.address 0.0.0.0 --server.port 8501
+
+  Access from any device on the network:
+    Local  → http://localhost:8501
+    Remote → http://<tailscale-ip>:8501
+
+──────────────────────────────────────────────────────
+  4. RUN MAIN BRAIN  (live EEG inference)
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+
+# Default model (RF60+SVM40_C2 — best model), live OpenBCI input
+python src/main_pi_bios_v15.py --models models/RF60+SVM40_C2
+
+# Run on pre-processed Mendeley npy files (Npy_files_preictal)
+python src/main_pi_bios_v15.py --models models/RF60+SVM40_C2 --data "data/Mendelay dataset/Npy_files_preictal"
+
+# With a specific patient loaded
+python src/main_pi_bios_v15.py --models models/RF60+SVM40_C2 --patient 1
+
+# Other available models
+python src/main_pi_bios_v15.py --models models/MODELS_NEUROWATCH
+python src/main_pi_bios_v15.py --models models/MODELS_FS75
+
+──────────────────────────────────────────────────────
+  5. VISUALISE PREPROCESSED EEG WINDOWS (after extraction)
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+
+# All classes in one plot — slider browses all ~11,000 samples
+python scripts/plotting/plot_preprocessed_eeg.py
+
+# One split only / start at index
+python scripts/plotting/plot_preprocessed_eeg.py --split train
+python scripts/plotting/plot_preprocessed_eeg.py --split test --start 500
+
+  Background: green = Normal  |  orange = Pre-ictal  |  red = Ictal
+  Buttons: Prev / Next / Save PNG  |  all classes in one plot
+
+──────────────────────────────────────────────────────
+  6. VISUALISE RAW EDF FILES (before preprocessing)
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+
+# List all EDF files and seizure counts (shows found / missing)
+python scripts/plotting/plot_raw_edf.py --list
+
+# Interactive picker — prompts for patient and record number
+python scripts/plotting/plot_raw_edf.py
+
+# Direct — e.g. Patient 10, Record 1
+python scripts/plotting/plot_raw_edf.py --patient 10 --record 1
+python scripts/plotting/plot_raw_edf.py --patient 11 --record 3
+python scripts/plotting/plot_raw_edf.py --patient 12 --record 2
+
+  Colours: green = Normal  |  orange = Pre-ictal  |  red = Ictal
+
+──────────────────────────────────────────────────────
+  6. EVALUATE MODEL ON TEST SET
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+python scripts/evaluation/eval_preictal_backup.py --model-dir models/RF60+SVM40_C2
+
+# No plots (headless Pi with no display)
+python scripts/evaluation/eval_preictal_backup.py --model-dir models/RF60+SVM40_C2 --no-plots
+
+──────────────────────────────────────────────────────
+  6. MODEL PERFORMANCE SUMMARY  (RF60+SVM40_C2)
+──────────────────────────────────────────────────────
+  Accuracy       : 77.1%
+  Seizure Recall : 86.7%
+  F1 (weighted)  : 77.1%
+  Overfitting gap: 7.8%
+  Normal threshold (θ): 0.39
+  Ensemble       : SVM 40% + RF 60%
+
+──────────────────────────────────────────────────────
+  7. PYTORCH CNN + TENSORBOARD
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+
+# Terminal 1 — train (logs saved to runs/)
+python scripts/training/train_cnn_tensorboard.py
+
+# Custom hyperparameters
+python scripts/training/train_cnn_tensorboard.py --epochs 80 --lr 5e-4 --batch 32
+
+# Terminal 2 — open dashboard while training runs
+tensorboard --logdir runs/
+
+  Browser: http://localhost:6006
+
+  TensorBoard panels:
+    SCALARS  → Loss/train, Loss/val, Accuracy/train, Accuracy/val
+               Accuracy_per_class/Normal, /Pre-Seizure, /Seizure
+               LearningRate
+    IMAGES   → Confusion Matrix (val) — updated every 5 epochs
+               Confusion Matrix (test) — at end
+    GRAPHS   → Full model computation graph
+    HISTOGRAMS → Weights and gradients for every layer
+    HPARAMS  → lr, batch, epochs vs val_acc and test_acc
+
+  Saved to models/CNN_TENSORBOARD/:
+    best_model.pt   — checkpoint at best val accuracy
+    final_model.pt  — weights after last epoch
+
+──────────────────────────────────────────────────────
+  8. TRAIN WITH LIVE VISUALIZATION
+──────────────────────────────────────────────────────
+cd /media/theberatsatsipi/0392-7BD9/NeuroWatch_Project
+
+# Standard training (no GUI)
+python scripts/training/train_mendeley.py \
+  --data "data/Mendelay dataset/Npy_files_preictal" \
+  --out  "models/MODELS_FS75"
+
+# Training with live 6-panel dashboard + PNG images saved at each stage
+python scripts/training/train_mendeley_visual.py \
+  --data "data/Mendelay dataset/Npy_files_preictal" \
+  --out  "models/MODELS_FS75"
+
+# Custom output directory
+python scripts/training/train_mendeley_visual.py --out models/MY_MODEL
+
+  Images saved to: models/<out>/training_viz/
+    01_class_distribution.png   — class counts before training
+    02_train_extraction.png     — EEG preview during train extraction
+    03_val_test_extraction.png  — EEG preview during val/test extraction
+    03_feature_importance.png   — top 20 RF-selected features
+    04a_svm_trained.png         — dashboard after SVM trained
+    04b_rf_trained.png          — dashboard after RF trained
+    04c_ensemble.png            — ensemble weights applied
+    05_confusion_matrices.png   — train / val / test confusion matrices
+    06_final_metrics.png        — accuracy bar chart + overfitting gap
+    07_training_complete.png    — final dashboard state
+
+──────────────────────────────────────────────────────
+  NOTES
+──────────────────────────────────────────────────────
+  - neurowatch_selector.py must be at project root
+    (required for joblib to unpickle selector.pkl)
+  - Run dashboard and brain in separate terminals
+  - metrics auto-update in json/neurowatch_metrics.json
+    while main_pi_bios_v15.py is running

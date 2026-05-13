@@ -1,0 +1,37 @@
+\begingroup
+\captionsetup{justification=centering, width=0.82\textwidth}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[
+        width=0.54\textwidth,
+        height=0.46\textheight,
+        keepaspectratio
+    ]{feature_pipeline_part_1_preprocessing}
+    \caption{Preprocessing stage applied to each one-second EEG window before feature extraction.}
+    \label{fig:feature-pipeline-preprocessing}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[
+        width=0.82\textwidth,
+        height=0.46\textheight,
+        keepaspectratio
+    ]{feature_pipeline_part_2_features}
+    \caption{Per-channel feature extraction. Thirteen features are extracted independently from each EEG channel.}
+    \label{fig:feature-pipeline-per-channel}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[
+        width=0.62\textwidth,
+        height=0.50\textheight,
+        keepaspectratio
+    ]{feature_pipeline_part_3_vector_model}
+    \caption{Feature concatenation, RF-importance selection, and hybrid SVM--RF classifier input.}
+    \label{fig:feature-pipeline-vector-model}
+\end{figure}
+
+\endgroup

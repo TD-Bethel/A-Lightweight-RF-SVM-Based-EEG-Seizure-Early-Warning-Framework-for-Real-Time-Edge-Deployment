@@ -1,0 +1,106 @@
+flowchart TD
+    subgraph TRAIN["Training: scripts/training/train_mendeley.py"]
+        A["main()"] --> B["load_and_extract(data_dir)"]
+        B --> C["Load x_train/y_train + x_test/y_test"]
+        C --> D["Combine all samples"]
+        D --> E["Stratified split: train / val / test"]
+        E --> F["extract_features(sample)"]
+
+        F --> G["Per EEG channel"]
+        G --> H["Resample 500 Hz -> 128 Hz"]
+        H --> I["Bandpass filter 0.5-45 Hz"]
+        I --> J["Band powers: delta/theta/alpha/beta/gamma"]
+        H --> K["Stats: Hjorth, skew, kurtosis, RMS, ZCR, entropy"]
+        J --> L["247-feature vector"]
+        K --> L
+
+        L --> M["train(...)"]
+        M --> N["StandardScaler"]
+        M --> O["RFImportanceSelector: choose top 75 features"]
+        O --> P["Train SVM"]
+        O --> Q["Train Random Forest"]
+        P --> R["Blend probabilities"]
+        Q --> R
+        R --> S["Tune Normal threshold"]
+
+        S --> T["evaluate_split(...)"]
+        T --> U["Metrics + confusion matrix"]
+        U --> V["save_models(...)"]
+    end
+
+    subgraph ARTIFACTS["Saved model artifacts: models/..."]
+        W["scaler.pkl"]
+        X["selector.pkl"]
+        Y["svm_model.pkl"]
+        Z["rf_model.pkl"]
+        AA["ensemble_weights.pkl"]
+        AB["training_report.json"]
+    end
+
+    V --> W
+    V --> X
+    V --> Y
+    V --> Z
+    V --> AA
+    V --> AB
+
+    subgraph RUNTIME["Live monitoring: src/main_pi_bios_v15.py"]
+        AC["Load model artifacts with joblib"]
+        AD["Read live or test EEG windows"]
+        AE["Extract same 247 features"]
+        AF["Scale + select top 75"]
+        AG["SVM + RF ensemble prediction"]
+        AH["Brain state: Normal / Pre-Seizure / Seizure"]
+        AI["Write runtime JSON files"]
+    end
+
+    W --> AC
+    X --> AC
+    Y --> AC
+    Z --> AC
+    AA --> AC
+    AC --> AD
+    AD --> AE
+    AE --> AF
+    AF --> AG
+    AG --> AH
+    AH --> AI
+
+    subgraph HARDWARE["Raspberry Pi hardware"]
+        AJ["Green LED: Normal"]
+        AK["Red LED: Pre-Seizure or Seizure"]
+        AL["Buzzer alert patterns"]
+        AM["20x4 LCD patient/state display"]
+        AN["Optional SMS alert"]
+    end
+
+    AH --> AJ
+    AH --> AK
+    AH --> AL
+    AH --> AM
+    AH --> AN
+
+    subgraph JSON["Runtime JSON: json/"]
+        AO["neurowatch_status.json"]
+        AP["neurowatch_patients.json"]
+        AQ["neurowatch_metrics.json"]
+        AR["neurowatch_history_P001.json"]
+    end
+
+    AI --> AO
+    AI --> AP
+    AI --> AQ
+    AI --> AR
+    AB --> AQ
+
+    subgraph UI["Streamlit interfaces"]
+        AS["dashboard_v2.py: clinician dashboard"]
+        AT["patient_mobile_ui.py: patient view"]
+    end
+
+    AO --> AS
+    AP --> AS
+    AQ --> AS
+    AR --> AS
+    AP --> AT
+    AR --> AT

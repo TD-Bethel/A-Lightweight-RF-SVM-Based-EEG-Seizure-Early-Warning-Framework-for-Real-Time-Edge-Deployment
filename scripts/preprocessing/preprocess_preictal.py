@@ -72,6 +72,18 @@ print(f"  Output dir       : {OUT_DIR}")
 print(f"{'='*65}\n")
 
 # ── Seizure timestamps (hour, minute, second, duration_seconds) ───────────────
+# SEIZURE_DB maps: patient_id → { session_id → [(hour, minute, second, duration_s), ...] }
+# These times were manually annotated in the Mendeley dataset.
+# Example: Patient 10, Session 1 had one seizure starting at 07:36:38 lasting 445 s.
+#
+# TO ADD A NEW PATIENT'S SEIZURES:
+#   1. Find the seizure onset times from the EDF annotations or clinical report.
+#   2. Add a new entry: patient_id: {session_id: [(h,m,s,duration), ...]}
+#   3. Also add the EDF file names to PATIENT_FILES below.
+#
+# TO CHANGE THE PRE-ICTAL WINDOW:
+#   Use the CLI flags: --preictal-minutes 30 --gap-minutes 2
+#   Or edit PREICTAL_START and PREICTAL_END constants above.
 SEIZURE_DB = {
     10: {1: [(7,36,38,445)],
          2: [(6,29,14,305)]},
@@ -95,6 +107,8 @@ SEIZURE_DB = {
          4: [(5,3,26,56),(6,23,29,20)]},
 }
 
+# PATIENT_FILES maps patient_id → list of .edf filenames in EDF_DIR/<patient_id>/
+# Each file is one recording session. The order must match SEIZURE_DB session keys.
 PATIENT_FILES = {
     10: ["Record1.edf","Record2.edf"],
     11: ["Record1.edf","Record2.edf","Record3.edf","Record4.edf"],
@@ -136,6 +150,14 @@ def normalise(windows):
 
 
 # ── Main extraction loop ───────────────────────────────────────────────────────
+# For each patient and each recording session:
+#   1. Open the EDF file with MNE and load all 19 EEG channels.
+#   2. For every seizure event listed in SEIZURE_DB:
+#        a. Extract ICTAL windows (during the seizure) → label 2
+#        b. Extract PRE-ICTAL windows (PREICTAL_START to PREICTAL_END before onset) → label 1
+#        c. Extract NORMAL windows (>NORMAL_DIST seconds from any seizure) → label 0
+#   3. Max-abs normalise every window to [-1, 1].
+# Then concatenate all patients, stratify-split 80/10/10, and save as .npy files.
 all_ictals    = []
 all_preictals = []
 all_normals   = []

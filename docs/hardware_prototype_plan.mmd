@@ -1,0 +1,38 @@
+%% Human-centred hardware prototype plan with device outputs.
+flowchart LR
+    P["Patient wearing<br/>10-20 EEG electrodes<br/>(19-channel montage)"]
+    AMP["EEG amplifier + ADC<br/>microvolt EEG signal<br/>sampled at 500 Hz"]
+    PI["Raspberry Pi / processing computer<br/>receives EEG stream"]
+
+    subgraph PIPE["Real-time analysis loop"]
+      W["1-second EEG window<br/>19 x 500 samples"]
+      PRE["Preprocessing<br/>max-abs scale, resample to 128 Hz,<br/>0.5-45 Hz bandpass"]
+      FEAT["Feature extraction<br/>13 features per channel<br/>247 total features"]
+      MODEL["Hybrid classifier<br/>RF selector: 247 to 75<br/>SVM 40% + RF 60%"]
+      DEC["Decision<br/>Normal / Pre-Seizure / Seizure<br/>confidence score"]
+    end
+
+    LCD["20 x 4 LCD display<br/>patient state + confidence"]
+    LED["LED indicators<br/>green = Normal<br/>red = warning"]
+    BUZ["Buzzer<br/>warning tone / seizure alarm"]
+    DASH["Dashboard<br/>state, confidence trend,<br/>logs and patient view"]
+    SMS["SMS alert<br/>sent to emergency contact<br/>when escalation rule is met"]
+
+    P --> AMP --> PI --> W --> PRE --> FEAT --> MODEL --> DEC
+    DEC --> LCD
+    DEC --> LED
+    DEC --> BUZ
+    DEC --> DASH
+    DEC --> SMS
+
+    classDef human fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef hardware fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+    classDef process fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+    classDef model fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#111827;
+    classDef alert fill:#fce7f3,stroke:#db2777,stroke-width:1px,color:#111827;
+
+    class P human;
+    class AMP,PI,LCD,LED,BUZ hardware;
+    class W,PRE,FEAT process;
+    class MODEL model;
+    class DEC,DASH,SMS alert;

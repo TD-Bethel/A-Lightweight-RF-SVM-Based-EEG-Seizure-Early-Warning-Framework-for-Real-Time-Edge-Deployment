@@ -1,0 +1,30 @@
+%% Feature extraction pipeline for the report figure.
+flowchart LR
+    A["1-second EEG window<br/>19 channels x 500 samples"] --> B["Per-channel resampling<br/>500 Hz to 128 Hz"]
+    B --> C["Bandpass filtering<br/>0.5-45 Hz"]
+    C --> D["Process each of the 19 channels independently"]
+
+    D --> E1["Relative band power<br/>Delta, Theta, Alpha, Beta, Gamma<br/>5 features"]
+    D --> E2["Hjorth parameters<br/>Activity, Mobility, Complexity<br/>3 features"]
+    D --> E3["Statistical features<br/>Skewness, Kurtosis, RMS, ZCR<br/>4 features"]
+    D --> E4["Spectral entropy<br/>1 feature"]
+
+    E1 --> F["13 features per channel"]
+    E2 --> F
+    E3 --> F
+    E4 --> F
+
+    F --> G["Concatenate across 19 channels"]
+    G --> H["247-dimensional feature vector<br/>19 x 13 = 247"]
+    H --> I["RF importance selector<br/>247 to 75 features"]
+    I --> J["SVM + RF classifier input"]
+
+    classDef input fill:#eef6ff,stroke:#2563eb,stroke-width:1px,color:#111827;
+    classDef process fill:#f4f0ff,stroke:#7c3aed,stroke-width:1px,color:#111827;
+    classDef feature fill:#ecfdf5,stroke:#059669,stroke-width:1px,color:#111827;
+    classDef output fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#111827;
+
+    class A input;
+    class B,C,D,G,I,J process;
+    class E1,E2,E3,E4,F feature;
+    class H output;
