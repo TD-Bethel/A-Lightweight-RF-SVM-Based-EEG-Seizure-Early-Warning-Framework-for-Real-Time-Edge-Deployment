@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(C:\\\\Python314\\\\python.exe -m pip install manim 2>&1)",
+      "PowerShell($manim = \"C:\\\\Users\\\\thebe\\\\AppData\\\\Roaming\\\\Python\\\\Python314\\\\Scripts\\\\manim.exe\"; cd \"c:\\\\Users\\\\thebe\\\\Documents\\\\EEG_Seizure_Detection - To edit\\\\NeuroWatch_Project\\\\REPORT\"; & $manim -ql neurowatch_animations.py EEGWaveformScene 2>&1 | Select-Object -Last 15)",
+      "PowerShell($manim = \"C:\\\\Users\\\\thebe\\\\AppData\\\\Roaming\\\\Python\\\\Python314\\\\Scripts\\\\manim.exe\"; cd \"c:\\\\Users\\\\thebe\\\\Documents\\\\EEG_Seizure_Detection - To edit\\\\NeuroWatch_Project\\\\REPORT\"; & $manim -ql neurowatch_animations.py FeaturePipelineScene 2>&1 | Select-Object -Last 25)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(git add *)"
+    ]
+  }
+}

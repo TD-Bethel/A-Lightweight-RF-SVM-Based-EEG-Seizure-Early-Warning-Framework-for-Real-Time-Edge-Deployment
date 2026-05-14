@@ -45,3 +45,17 @@ neurowatch_metrics_output.json
 
 # Prevent accidental nested clone of the same repo
 /NeuroWatch_Project/
+
+# Generated caches and experiment tracking
+_feat_cache/
+mlflow.db
+mlruns/
+runs/
+
+# Manim generated video output
+REPORT/media/
+REPORT/__pycache__/
+
+# Prism browser app data
+prism_profile/
+prism_session.json

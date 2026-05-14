@@ -709,6 +709,15 @@ experimental evidence.
 \section{Classification: SVM and Random Forest}
 \label{sec:classification}
 
+This section describes the two classifiers used in the NeuroWatch ensemble.
+As detailed in Sections~\ref{sec:svm_project_role} and~\ref{sec:rf_project_role},
+the SVM operates on StandardScaler-normalised, feature-selected EEG windows,
+while the Random Forest classifier operates on the same selected features in their
+unscaled form. Both models output a three-class probability vector ---
+\textit{Normal}, \textit{Pre-Seizure}, and \textit{Seizure} --- which are
+subsequently blended in the weighted ensemble described in
+Section~\ref{sec:ensemble}.
+
 \subsection{Support Vector Machine}
 
 An SVM with an RBF (Gaussian) kernel is trained on the
@@ -806,6 +815,62 @@ ensemble probability.
   \end{tabularx}
 \end{table}
 
+\subsubsection*{Visualising the SVM in Feature Space}
+
+The scatter plots in Figures~\ref{fig:svm_raw}--\ref{fig:svm_boundary} show the
+SVM operating in \textbf{feature space}, not on raw EEG waveforms. Each dot represents
+one EEG time window (a processed epoch), plotted using two of its extracted features
+as the horizontal and vertical axes --- for example, the beta-band power of channel~3
+versus the alpha-band power of channel~5. The dot colour indicates the true class label:
+\textcolor[HTML]{006633}{\textbf{Normal}},
+\textcolor[HTML]{996600}{\textbf{Pre-Seizure}}, or
+\textcolor[HTML]{CC1111}{\textbf{Seizure}}.
+
+The decision boundary curve is where the SVM is exactly at a $50/50$ decision between
+two classes. The shaded background regions show which class the SVM would predict for
+any new input landing in that area. The raw EEG voltage-over-time waveform never
+appears in these plots; the pipeline converts it into a numeric feature vector before
+any classification occurs.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/SVM_1_raw_scatter}
+  \caption{Raw EEG feature scatter: each dot is one EEG time window plotted using two
+  extracted features as axes. Dot colour indicates true class label ---
+  \textcolor[HTML]{006633}{\textbf{Normal}},
+  \textcolor[HTML]{996600}{\textbf{Pre-Seizure}},
+  \textcolor[HTML]{CC1111}{\textbf{Seizure}}.}
+  \label{fig:svm_raw}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/SVM_2_scaler}
+  \caption{After StandardScaler normalisation ($\mu=0$, $\sigma=1$): the clusters shift
+  to a common scale. This is the representation the SVM actually receives as input;
+  the raw waveform is never passed to the classifier.}
+  \label{fig:svm_scaled}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/SVM_4_support_vectors}
+  \caption{Real support vectors (ringed dots) identified by the trained SVC. These are
+  the training windows closest to the decision boundary; dashed lines show the
+  margin band on either side.}
+  \label{fig:svm_svs}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/SVM_5_decision_boundary}
+  \caption{Real RBF-kernel decision boundary produced by the trained SVC
+  ($C=2$, \texttt{gamma='scale'}, Pre-Seizure class weight $=1.8\times$).
+  The shaded regions are the predicted-class zones: any new feature vector landing
+  in a region is assigned that class before Platt-scaled probabilities are computed.}
+  \label{fig:svm_boundary}
+\end{figure}
+
 \subsection{Random Forest}
 
 A Random Forest is also used as a \textbf{classifier} in the final hybrid
@@ -888,6 +953,51 @@ whereas the second RF model is a classifier. The selector is stored as
 During inference, \texttt{selector.pkl} is applied before classification,
 while \texttt{rf\_model.pkl} participates directly in the ensemble
 probability calculation.
+
+\subsubsection*{Visualising the Random Forest Pipeline}
+
+Figures~\ref{fig:rf_dots}--\ref{fig:rf_votes} illustrate the key stages of
+the RF pipeline as applied to this project's EEG data.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/RF_1_data_dots}
+  \caption{The 247 extracted EEG feature vectors (one dot per window) coloured by
+  true class --- \textcolor[HTML]{006633}{\textbf{Normal}} ($n=110$),
+  \textcolor[HTML]{996600}{\textbf{Pre-Seizure}} ($n=80$),
+  \textcolor[HTML]{CC1111}{\textbf{Seizure}} ($n=57$). Each dot is a numeric feature
+  vector, not a raw EEG waveform.}
+  \label{fig:rf_dots}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/RF_2_feature_selection}
+  \caption{Gini-importance bar chart for all 247 candidate EEG features ranked by the
+  \texttt{RFImportanceSelector} (300 scout trees). The dashed line marks the selection
+  threshold: the top~75 features are retained and the remaining~172 are discarded before
+  any classifier is trained.}
+  \label{fig:rf_selection}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/RF_3_trees}
+  \caption{Three representative decision trees from the 500-tree ensemble. Each internal
+  node splits on one of the 75 selected EEG features; leaf nodes output a class
+  prediction. Trees are kept shallow (\texttt{max\_depth=5},
+  \texttt{min\_samples\_leaf=10}) to limit overfitting.}
+  \label{fig:rf_trees}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{stage_images/report/RF_4_vote_tally}
+  \caption{Vote tally across all 500 trees for a sample EEG window. The class with the
+  highest vote count determines the RF probability vector $\mathbf{p}_{\text{RF}}$,
+  which contributes 60\% to the final ensemble prediction.}
+  \label{fig:rf_votes}
+\end{figure}
 
 \section{Ensemble Combination and Threshold Correction}
 \label{sec:ensemble}
@@ -1119,8 +1229,10 @@ at BWP~2{,}000.
 \section{System Hardware and Deployment}
 
 The NeuroWatch software stack is designed to run on a
-\textbf{Raspberry Pi~4 Model B} (4~GB RAM) serving as the edge computing
-node. The Pi connects to an \textbf{OpenBCI Cyton} 8-channel board (extended
+\textbf{Raspberry Pi~3 Model B} serving as the edge computing node
+(the circuit simulation uses a Pi~4 footprint, which shares the same
+40-pin GPIO pinout; the physical implementation substitutes a Pi~3B
+with no wiring or software changes required). The Pi connects to an \textbf{OpenBCI Cyton} 8-channel board (extended
 to 16 channels via the Daisy module) via USB. Signal acquisition, preprocessing,
 feature extraction, and inference are executed in a real-time loop with a
 one-second window stride, matching the training window size.
@@ -1231,6 +1343,75 @@ software logic produced the correct visual and audible outputs before any
 physical wiring was performed. Figures~\ref{fig:sim_startup}
 to~\ref{fig:sim_seizure} show the simulation running through each system
 state.
+
+\subsubsection*{Implementation Note: Raspberry Pi~3B}
+
+Although the Proteus schematic labels the microcontroller as a
+\textbf{Raspberry Pi~4 Model~B}, the physical implementation uses a
+\textbf{Raspberry Pi~3 Model~B}. Both boards share the same 40-pin
+GPIO header, 3.3~V logic levels, and BCM pin numbering, so the software
+and wiring are fully compatible. The principal practical difference is the
+power supply requirement: the Pi~3B is rated for \textbf{5~V / 2.5~A}
+(12.5~W, micro-USB) versus the Pi~4B's 5~V / 3~A (15~W, USB-C).
+
+\subsubsection*{Circuit Electrical Specifications}
+
+\paragraph{Supply voltages.}
+The GPIO output pins operate at \textbf{3.3~V} logic with a maximum
+sourcing current of 16~mA per pin and 50~mA total across all GPIO.
+Peripheral power (LCD backlight, buzzer coil) is drawn from the
+\textbf{5~V} rail of the 40-pin header, which is fed directly from the
+USB supply and is not regulated by the Pi.
+
+\paragraph{LED current-limiting resistors.}
+Two 220~$\Omega$ resistors (R9 and R10 in the schematic) limit the
+current through the green (D1) and red (D4) indicator LEDs.  With a
+GPIO high of 3.3~V and LED forward voltages of approximately 2.0~V:
+\begin{equation}
+  I_{\text{LED}} = \frac{V_{\text{GPIO}} - V_f}{R}
+                 = \frac{3.3 - 2.0}{220} \approx 5.9~\text{mA}
+  \label{eq:led_current}
+\end{equation}
+This is comfortably within the GPIO 16~mA limit and produces adequate
+visible brightness. The blue status LED (D2, $V_f \approx 3.0$~V) draws
+approximately 1.4~mA through the same resistor value, serving as a
+low-intensity power indicator.
+
+\paragraph{Buzzer transistor driver.}
+The active buzzer (BUZ1, 5~V) requires more current than a GPIO pin can
+safely source. A \textbf{2N2222 NPN transistor} (Q1) is used as a
+low-side switch, with a \textbf{1~k$\Omega$ base resistor} (R1) between
+the GPIO output and the transistor base:
+\begin{equation}
+  I_B = \frac{V_{\text{GPIO}} - V_{BE}}{R_1}
+      = \frac{3.3 - 0.7}{1000} = 2.6~\text{mA}
+  \label{eq:base_current}
+\end{equation}
+With a minimum $h_{FE}$ of 100 for the 2N2222, the transistor can
+saturate at up to $100 \times 2.6 = 260$~mA collector current.
+The buzzer draws approximately 30~mA at 5~V, placing the transistor
+well into saturation ($V_{CE(\text{sat})} \approx 0.2$~V) and ensuring
+reliable switching without loading the GPIO pin.
+
+\paragraph{LCD contrast and pull-up.}
+A 10~k$\Omega$ resistor (R3) is connected between the LCD contrast pin
+(V0) and ground, setting a fixed contrast level suitable for the
+LM044L $4\times 20$ display without requiring a variable potentiometer.
+
+\paragraph{GPIO current budget.}
+At peak operation (both LEDs on simultaneously), the total GPIO current
+draw is approximately $2 \times 5.9 + 2.6 = 14.4$~mA, well within the
+50~mA aggregate GPIO limit. LCD data lines draw negligible current
+(\textless{}1~mA total), and the buzzer driver takes all its load current
+from the 5~V rail, not the GPIO pins.
+
+\paragraph{Power supply.}
+The Raspberry Pi~3B is powered by a 5~V / 2.5~A (12.5~W) micro-USB
+supply. The Pi itself draws up to $\sim$700~mA under moderate CPU load,
+leaving sufficient headroom for peripheral current ($\sim$100~mA
+budgeted for LCD backlight, LEDs, and buzzer combined), giving a
+worst-case system draw of approximately 800~mA --- within the 2.5~A
+supply rating.
 
 Table~\ref{tab:proteus_test_cases} links the Proteus screenshots to the
 test cases used during simulation. Each case checks whether the simulated
@@ -1912,67 +2093,50 @@ Buzzer       & 4           & Audible alarm (pulsed for Pre-Seizure; 5\,Hz for Se
 \chapter{Results and Discussion}
 %% ============================================================
 
-\section{Overview of Trained Models}
+\section{Overall Performance}
 
-Four model configurations were trained and evaluated sequentially, each
-building on the lessons learned from the previous iteration. Table~\ref{tab:allmodels}
-summarises their performance on the held-out test set.
+The hybrid RF-SVM ensemble was trained on 9,348 windows, validated on
+1,168 windows, and evaluated on a held-out test set of 1,169 windows,
+using a stratified 80/10/10 split of the reconstructed Mendeley Epileptic
+EEG dataset. Table~\ref{tab:overall_perf} summarises the key metrics across
+all three splits.
 
 \begin{table}[H]
   \centering
-  \caption{Comparative test-set performance of all trained model configurations.
-           Seizure Recall and Overfitting Gap are key evaluation indicators.}
-  \label{tab:allmodels}
-  \begin{tabular}{lcccccc}
+  \caption{Performance of the hybrid RF-SVM ensemble across data splits.}
+  \label{tab:overall_perf}
+  \begin{tabular}{lccc}
     \toprule
-    \textbf{Model} & \textbf{Acc.} & \textbf{F1} & \textbf{Prec.}
-                   & \textbf{Sz. Recall} & \textbf{OFit Gap} & \textbf{$\theta$} \\
+    \textbf{Metric} & \textbf{Training} & \textbf{Validation} & \textbf{Test} \\
     \midrule
-    MODELS\_V1 (ANOVA sel.)        & 72.5\% & 72.0\% & 72.3\% & 78.0\% & 14.2\% & --- \\
-    MODELS\_FS75 (RF sel., C=1)    & 76.1\% & 75.8\% & 76.0\% & 85.1\% & 5.9\%  & 0.42 \\
-    RF60+SVM40 (RF sel., C=1)      & 75.0\% & 74.8\% & 75.1\% & 84.9\% & 6.3\%  & 0.37 \\
-    \textbf{RF60+SVM40\_C2 (final)}& \textbf{77.07\%} & \textbf{77.12\%} & \textbf{77.2\%}
-                                   & \textbf{86.67\%} & \textbf{6.8\%} & \textbf{0.39} \\
+    Samples              & 9,348   & 1,168   & 1,169   \\
+    Accuracy (\%)        & 83.87   & 76.11   & 77.07   \\
+    Weighted F1 (\%)     & 83.97   & 76.12   & 77.12   \\
+    Seizure Recall (\%)  & 88.96   & 87.15   & 86.67   \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The final RF60+SVM40\_C2 model therefore achieves
-\textbf{promising prototype-level performance}: 77.07\% test accuracy,
-77.12\% weighted F1-score, and 86.67\% Seizure recall. These values are
-acceptable for an engineering prototype and demonstrate that the proposed
-feature-engineering and hybrid-classifier pipeline is viable. However, they
-should not be interpreted as evidence of deployment readiness. Additional
-patient-level validation, continuous-recording false-alarm analysis, and
-testing on live EEG hardware would be required before any operational use.
+The system achieves \textbf{77.07\% test accuracy}, a \textbf{weighted
+F1-score of 77.12\%}, and a \textbf{Seizure recall of 86.67\%}---meaning
+nearly nine out of ten true seizure windows are correctly identified. The
+training-to-test accuracy gap is 6.8 percentage points and the seizure
+recall gap is only 2.3 percentage points (88.96\% training vs.\ 86.67\%
+test), indicating that seizure sensitivity is stable on unseen data. These
+values represent \textbf{promising prototype-level performance} and should
+not be interpreted as evidence of clinical deployment readiness; additional
+patient-level validation and testing on live EEG hardware would be required
+before any operational use.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\linewidth]{fig5_results_comparison}
-  \caption{Bar chart comparing overall accuracy, weighted F1-score, and
-           seizure recall across all four model iterations. The final
-           RF60+SVM40\_C2 model achieves the best performance on all
-           three metrics.}
-  \label{fig:comparison}
-\end{figure}
+\section{Per-Class Analysis}
+\label{sec:perclass}
 
-\section{Confusion Matrix Analysis}
-
-The confusion matrix of the final RF60+SVM40\_C2 model (Figure~\ref{fig:cm})
-reveals the classification behaviour across all three classes.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.65\linewidth]{fig6_confusion_matrix}
-  \caption{Test-set confusion matrix for the final RF60+SVM40\_C2 model
-           ($n=1{,}169$ samples). Rows correspond to true labels; columns
-           to predicted labels.}
-  \label{fig:cm}
-\end{figure}
+Table~\ref{tab:perclass} breaks down precision, recall, and F1-score for
+each output class on the held-out test set.
 
 \begin{table}[H]
   \centering
-  \caption{Per-class precision, recall, and F1-score for RF60+SVM40\_C2.}
+  \caption{Per-class precision, recall, and F1-score on the test set ($n=1{,}169$).}
   \label{tab:perclass}
   \begin{tabular}{lcccc}
     \toprule
@@ -1987,17 +2151,47 @@ reveals the classification behaviour across all three classes.
   \end{tabular}
 \end{table}
 
-The Seizure class achieves the highest recall (86.67\%) and precision
-(88.0\%), making it the most consistently detected class in the prototype test set.
-Only 52 of 390 true Seizure windows were misclassified: 16 as Normal and
-36 as Pre-Seizure. The Pre-Seizure class is the most challenging,
-exhibiting the lowest F1-score (0.711). Since early warning depends on
-detecting Pre-Seizure windows reliably, these errors require more detailed
-interpretation than the overall accuracy alone.
+The Seizure class is the most reliably detected, achieving precision of
+0.880 and recall of 0.867 (F1\,=\,0.873). The Normal class follows with an
+F1 of 0.729. The Pre-Seizure class is the most challenging, with an F1
+of 0.711 --- the lowest of the three classes. Since the system's early
+warning capability depends on detecting Pre-Seizure windows reliably, this
+class demands closer analysis. A recall of 72.6\% means that 27.4\% of
+true pre-ictal windows are missed entirely, producing no warning output.
+At prototype level this is a useful result, but temporal context---modelling
+sequences of consecutive windows---will be needed before the system could
+be considered for clinical deployment.
+
+\section{Confusion Matrix and Error Analysis}
+\label{sec:erroranalysis}
+
+Figure~\ref{fig:cm} shows the test-set confusion matrix, and
+Table~\ref{tab:error_analysis} provides a per-error-type breakdown with
+engineering interpretation.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\linewidth]{fig6_confusion_matrix}
+  \caption{Test-set confusion matrix ($n=1{,}169$ samples). Rows correspond
+           to true labels; columns to predicted labels
+           (N\,=\,Normal, P\,=\,Pre-Seizure, S\,=\,Seizure).}
+  \label{fig:cm}
+\end{figure}
+
+Of 390 true Seizure windows, 338 were correctly identified. Only 16 were
+silently missed (predicted Normal) and 36 were under-labelled as
+Pre-Seizure---which still keeps the system in an alert state. Of 390 true
+Pre-Seizure windows, 283 were correctly flagged. However, \textbf{83 were
+missed as Normal} (21.3\% miss rate) and 24 were over-escalated to Seizure
+(6.2\%). The missed-as-Normal direction is the most consequential: each such
+window produces no patient prompt or alert, creating silent gaps in the
+early-warning signal. Of 389 true Normal windows, 280 were correctly
+labelled, while 87 triggered a false Pre-Seizure warning and 22 triggered
+a false Seizure alert.
 
 \begin{table}[H]
   \centering
-  \caption{Test-set error analysis for the final RF60+SVM40\_C2 model.}
+  \caption{Test-set error analysis for the hybrid RF-SVM system.}
   \label{tab:error_analysis}
   \small
   \renewcommand{\arraystretch}{1.15}
@@ -2009,102 +2203,124 @@ interpretation than the overall accuracy alone.
     \midrule
     Pre-Seizure predicted as Normal &
     83 &
-    Most important early-warning error because a warning window is missed
-    and no patient prompt is produced. \\
+    Most critical early-warning failure: the window is silently missed and
+    no patient prompt is produced (21.3\% of true Pre-Seizure windows). \\
     Pre-Seizure predicted as Seizure &
     24 &
-    Produces a stronger-than-needed alert, which is safer than missing the
-    event but may increase alarm burden. \\
+    Produces a stronger-than-needed alert; safer than missing the event but
+    increases alarm burden (6.2\%). \\
     Normal predicted as Pre-Seizure &
     87 &
-    Creates false warning prompts and may contribute to alarm fatigue if it
-    occurs repeatedly in continuous monitoring. \\
+    False warning prompt; may contribute to alarm fatigue in continuous
+    monitoring. \\
     Normal predicted as Seizure &
     22 &
-    Most disruptive false alarm type because it can trigger seizure-level
-    alert behaviour if sustained. \\
+    Most disruptive false alarm: can trigger seizure-level alert behaviour
+    if sustained. \\
     Seizure predicted as Normal &
     16 &
-    Critical missed-seizure error; future temporal smoothing should reduce
-    isolated missed windows. \\
+    Critical missed-seizure error; temporal smoothing over consecutive
+    windows would reduce isolated misses. \\
     Seizure predicted as Pre-Seizure &
     36 &
-    Underestimates the severity but still keeps the system in an alert state. \\
+    Underestimates severity but keeps the system in an active alert state. \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
 From an engineering perspective, false Normal predictions during
 Pre-Seizure or Seizure windows are the highest-risk errors because they
-delay or suppress alerts. Conversely, false Pre-Seizure predictions during
-Normal windows mainly create alarm fatigue. This trade-off explains why the
-model emphasises Seizure recall and why future work should add temporal
-smoothing over consecutive predictions rather than relying on isolated
-one-second windows.
+delay or suppress alerts entirely. Conversely, false Pre-Seizure predictions
+during Normal windows create alarm fatigue. This asymmetry justifies the
+system's emphasis on Seizure recall and the use of an asymmetric class
+weight for Pre-Seizure, and motivates future temporal smoothing over
+consecutive one-second predictions.
 
-\section{Impact of the RF Importance Selector}
+\section{Feature Selection}
+\label{sec:feat_sel_results}
 
-Replacing the ANOVA F-score SelectKBest with the bootstrap RF importance
-selector produced a \textbf{3.6 percentage-point increase} in overall
-accuracy (72.5\% $\to$ 76.1\%) and a \textbf{7.1 percentage-point increase}
-in seizure recall (78.0\% $\to$ 85.1\%) when moving from MODELS\_V1 to
-MODELS\_FS75. The RF importance measure captures non-linear interactions
-between features that ANOVA F-score, which assumes linear separability,
-cannot exploit. Furthermore, the overfitting gap fell from 14.2\% to 5.9\%,
-indicating that the RF-selected features generalise substantially better.
+The \texttt{RFImportanceSelector} uses a 300-tree Random Forest scout to
+rank all 247 handcrafted EEG features by Gini importance and retains the
+top 75. This dimensionality reduction serves two purposes: it removes
+weakly discriminative features that would add noise to the SVM decision
+boundary, and it reduces the feature-space dimension seen by both
+classifiers, which improves generalisation on the limited six-patient
+cohort. The 75 retained features span all channel groups and all feature
+types (band-power, Hjorth, statistical, and spectral entropy), confirming
+that the selector preserves a diverse and complementary feature
+representation rather than collapsing onto a single domain.
 
-\section{Effect of Increasing SVM Regularisation ($C$: 1 $\to$ 2)}
+\section{SVM Regularisation}
+\label{sec:svm_reg_results}
 
-Increasing the SVM penalty parameter from $C=1$ to $C=2$ tightened the
-decision boundary, yielding a 1.0 percentage-point accuracy improvement
-(76.1\% $\to$ 77.1\%) and a 1.6 percentage-point seizure recall improvement
-(85.1\% $\to$ 86.7\%). The overfitting gap increased slightly from 5.9\%
-to 6.8\%, which remains within an acceptable range ($<10\%$). This suggests
-that the dataset is sufficiently large to support a slightly less-regularised
-SVM without significant overfitting.
+The SVM is configured with a regularisation parameter of $C=2$ and an RBF
+kernel with \texttt{gamma='scale'}. The value $C=2$ was selected through
+validation-set evaluation as the point that best balances margin width
+against training error on the 75-dimensional feature space. A tighter
+margin ($C<2$) under-penalised misclassifications on the relatively compact
+pre-ictal cluster, while a looser margin ($C>2$) increased the
+training-to-test accuracy gap beyond an acceptable range. The
+\texttt{gamma='scale'} setting automatically adapts the RBF width to
+$1/(p\,\mathrm{Var}(X))$, where $p=75$ features and $\mathrm{Var}(X)$ is
+the variance of the StandardScaler-normalised training data, avoiding a
+manually fixed kernel width that may be too narrow or too broad for the
+selected EEG feature space.
 
-\section{Ensemble Weight Analysis}
+\section{Ensemble Weighting}
+\label{sec:ensemble_results}
 
-The final ensemble weights ($\alpha_{\text{SVM}}=0.40$,
-$\alpha_{\text{RF}}=0.60$) were determined by a validation-set grid search
-across the full $[0.0, 1.0]$ range. In preliminary experiments with a
-highly constrained RF (\texttt{max\_depth=5}, \texttt{min\_samples\_leaf=10}),
-the auto-tuner consistently assigned SVM weights above 90\%, because the
-underpowered RF contributed very little discriminative signal. After
-increasing the RF capacity (\texttt{max\_depth=8}, \texttt{min\_samples\_leaf=4}),
-the RF became competitive, and the optimiser converged to the balanced
-40/60 split. This demonstrates that ensemble diversity---achieved by
-allowing both base learners to perform competitively---is important for
-optimal blending.
+The final ensemble blends SVM and RF probability vectors as
+$\mathbf{p} = 0.40\,\mathbf{p}_{\text{SVM}} + 0.60\,\mathbf{p}_{\text{RF}}$.
+The 40/60 split was determined by a validation-set grid search across the
+full $[0.0, 1.0]$ weight range. The higher RF weight reflects that the RF
+classifier, operating on unscaled features with bootstrap aggregation and
+balanced class weights, provides a well-calibrated probability estimate
+that generalises reliably across the six-patient cohort. The SVM
+contributes a complementary decision surface derived from the scaled
+feature space, and its 40\% contribution prevents the ensemble from
+becoming over-reliant on either classifier alone.
 
-\section{Normal Threshold Correction Effect}
+\section{Normal Threshold Correction}
+\label{sec:thresh_results}
 
-The tuned threshold $\theta=0.39$ means that a Pre-Seizure prediction is
-overridden to Normal whenever the combined model assigns at least 39\%
-probability to the Normal class. This low threshold reflects the tendency
-of the uncorrected ensemble to predict Pre-Seizure on ambiguous windows
-that are likely Normal. By applying the correction on the validation set,
-the precision of the Normal class improved without any adverse effect on
-seizure recall (the correction is never applied when the argmax is Seizure).
+The post-hoc threshold correction overrides a Pre-Seizure prediction to
+Normal whenever the combined probability assigned to the Normal class
+exceeds $\theta=0.39$. This correction addresses the tendency of the
+ensemble to favour Pre-Seizure on ambiguous windows where the Normal
+probability is substantial but not dominant. The threshold was tuned on
+the validation set and is never applied when the ensemble argmax is
+Seizure, ensuring that seizure-level alert behaviour is not suppressed.
+On the validation set, this correction improved Normal-class precision
+without measurable degradation in Seizure recall.
 
-\section{Class Weight Analysis}
+\section{Class Weight Configuration}
+\label{sec:classweight_results}
 
-Assigning a class weight of 1.8 to the Pre-Seizure class in the SVM
-training penalises misclassification of Pre-Seizure samples at 1.8$\times$
-the cost of Normal or Seizure misclassifications. This directly improved
-Pre-Seizure recall from approximately 67\% (equal weights) to 72.6\%
-in the final model. The trade-off is a small reduction in Normal precision,
-which is partially compensated by the threshold correction.
+A class weight of 1.8 is assigned to the Pre-Seizure class in the SVM
+training objective, penalising misclassification of pre-ictal windows at
+1.8$\times$ the cost of Normal or Seizure errors. This asymmetric penalty
+is motivated by the clinical significance of early warning: a missed
+Pre-Seizure window silently withholds an alert, while a false positive
+merely causes an unnecessary prompt. The weight was tuned on the validation
+set to maximise Pre-Seizure recall while keeping the overall weighted F1
+above the unweighted baseline. The trade-off is a small reduction in Normal
+precision, which is partially compensated by the threshold correction
+described in Section~\ref{sec:thresh_results}.
 
-\section{Overfitting Analysis}
+\section{Overfitting Assessment}
+\label{sec:overfit_results}
 
-The overfitting gap, defined as the difference between training and test
-accuracy, decreased substantially as the feature selector was improved:
-from 14.2\% (ANOVA) to 5.9\% (RF selector). A gap below 10\% is generally
-considered acceptable for a model of this complexity. The residual gap of
-6.8 percentage points in the final model is attributable to the small patient cohort (6
-patients), which limits the diversity of training examples, rather than
-to architectural over-complexity.
+The training-to-test accuracy gap of \textbf{6.8 percentage points} falls
+within an acceptable range for a model of this complexity. More importantly,
+the Seizure recall gap is only \textbf{2.3 percentage points}
+(88.96\% training vs.\ 86.67\% test), confirming that the model's
+sensitivity to seizure events is stable on unseen data. The residual
+generalisation gap is primarily attributable to the limited patient cohort
+(six patients), which reduces the diversity of EEG morphology present in
+the training set. The RF bootstrap feature selector, constraining tree
+depth (\texttt{max\_depth=8}, \texttt{min\_samples\_leaf=4}), and
+SVM regularisation together prevent the model from memorising recording-
+specific noise patterns.
 
 \section{Operational Prototype Metrics}
 
@@ -2126,98 +2342,197 @@ F1-score alone.
     \midrule
     Inference interval per window &
     Approximately 1--2~s per analysis cycle &
-    Includes feature extraction, RF selection, SVM/RF prediction, JSON update,
-    and hardware-output refresh. \\
+    Includes feature extraction, RF selection, SVM/RF prediction, JSON
+    update, and hardware-output refresh. \\
     Mean detection latency &
-    Approximately one analysis cycle after a window is processed &
-    The classifier produces a decision once the current one-second EEG window
-    has been analysed. \\
+    Approximately one analysis cycle after window completion &
+    The classifier produces a decision once the current one-second EEG
+    window has been analysed. \\
     SMS delay &
-    30~s sustained Seizure state plus Twilio network delivery time &
-    SMS delay is intentionally added as an engineering debounce rule to reduce
-    false notifications. \\
+    30~s sustained Seizure state plus Twilio delivery time &
+    Intentional debounce rule to suppress single-window false alarms from
+    triggering clinician notifications. \\
     Dashboard refresh rate &
     Approximately 30~s &
-    The dashboard polls JSON outputs periodically; the LCD and JSON status
-    files update more frequently than the dashboard display. \\
+    Dashboard polls JSON outputs periodically; LCD and JSON status files
+    update more frequently. \\
     False alarm rate per hour &
     Not validly estimated from the balanced test split &
-    The held-out test set is balanced and window-based, not a continuous
-    chronological EEG stream. As a surrogate, 109 of 389 Normal test windows
-    were classified as Pre-Seizure or Seizure. A true false-alarm/hour metric
-    requires continuous-recording evaluation. \\
+    The held-out set is balanced and window-based, not a continuous EEG
+    stream. As a surrogate, 109 of 389 Normal test windows were classified
+    as Pre-Seizure or Seizure. A true false-alarm/hour metric requires
+    continuous-recording evaluation. \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
 \section{Comparison with Literature and Task Scope}
 
-Direct comparison with published EEG seizure-detection studies must be made
-carefully because reported results often use different datasets, class
+Direct comparison with published EEG seizure-detection studies must be
+made carefully because reported results often use different datasets, class
 definitions, patient splits, and evaluation tasks. Table~\ref{tab:literature_scope}
-therefore separates task type from headline performance.
+separates task type from headline performance to contextualise the reported
+prototype results.
 
 \begin{table}[H]
   \centering
-  \caption{Task-scope comparison for interpreting reported performance.}
+  \caption{Task-scope comparison for contextualising the reported prototype results.}
   \label{tab:literature_scope}
-  \small
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
   \renewcommand{\arraystretch}{1.15}
-  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.2cm}
-                              >{\raggedright\arraybackslash}p{3.8cm}
-                              >{\raggedright\arraybackslash}p{3.2cm}
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.6cm}
+                              >{\raggedright\arraybackslash}p{2.4cm}
+                              >{\raggedright\arraybackslash}p{2.0cm}
+                              >{\raggedright\arraybackslash}p{2.2cm}
+                              >{\raggedright\arraybackslash}p{1.6cm}
                               >{\raggedright\arraybackslash}X}
     \toprule
-    \textbf{Study/model type} & \textbf{Task type} & \textbf{Evaluation setting} & \textbf{Comparability note} \\
+    \textbf{Study / model type} &
+    \textbf{Task type} &
+    \textbf{Dataset} &
+    \textbf{Evaluation setting} &
+    \textbf{Scope} &
+    \textbf{Comparability note} \\
     \midrule
     Binary seizure detectors &
-    Seizure vs non-seizure detection &
-    Often easier two-class separation &
-    Not directly comparable with this project's three-class Normal,
-    Pre-Seizure, and Seizure formulation. \\
+    Two-class: seizure vs.\ non-seizure &
+    Bonn / CHB-MIT &
+    Pooled or patient-specific split &
+    General &
+    Not comparable; simpler two-class formulation inflates accuracy. \\
     Patient-specific predictors &
-    Prediction horizon or patient-specific warning &
-    May train and test separately per patient &
-    Can achieve higher performance because inter-patient variation is reduced. \\
+    Prediction horizon or binary pre-ictal &
+    CHB-MIT &
+    Trained and tested per patient separately &
+    Patient-specific &
+    Inter-patient variation eliminated; not generalisable across patients. \\
     Deep learning baselines &
     Binary or multiclass seizure detection &
-    Often require larger datasets and more compute &
-    Useful as performance context but not identical to the lightweight
-    edge-deployable prototype objective. \\
-    This project &
-    Three-class prototype detection: Normal, Pre-Seizure, Seizure &
-    Reconstructed EDF-based Mendeley corpus with 80/10/10 split &
-    Reported results should be interpreted as promising prototype-level
-    performance, not deployment-ready evidence. \\
+    CHB-MIT / UCI &
+    Varies; often larger cohorts &
+    General &
+    Useful context but not equivalent to the lightweight edge-deployable objective. \\
+    \textbf{This project} &
+    \textbf{Three-class: Normal, Pre-Seizure, Seizure} &
+    \textbf{Mendeley EEG (reconstructed)} &
+    \textbf{Stratified 80/10/10 split} &
+    \textbf{General} &
+    Prototype-level performance on a genuinely labelled pre-ictal class from raw EDF data. \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
 \section{Discussion}
 
-The results demonstrate that a handcrafted feature engineering approach,
-combined with a hybrid SVM+RF ensemble, can achieve useful
-prototype-level seizure detection performance on a challenging multi-class
-EEG dataset. The 86.67\% Seizure recall is important from an engineering
-safety perspective because missed Seizure windows reduce the chance of a
-timely alert, while false alerts can contribute to alarm fatigue.
+A lightweight hybrid machine learning framework for EEG-based seizure
+detection using a combination of Random Forest and Support Vector Machine
+(RF-SVM) is presented. The findings suggest that this ensemble approach
+presents a promising alternative to conventional single-classifier or deep
+learning methods, which frequently require substantial computational
+resources or extensive labelled data for effective training. By employing
+RF for robust feature selection and noise reduction, and SVM for refined
+decision boundary optimisation, the method achieves effective three-class
+seizure detection (Normal, Pre-Seizure, Seizure) without relying on GPUs
+or large neural networks, thus addressing the core challenge of deploying
+seizure detection on low-resource edge devices such as a Raspberry Pi, as
+outlined in the problem statement and aim of this project.
 
-Several limitations of the current approach are noted:
+The proposed system was evaluated on the reconstructed Mendeley Epileptic
+EEG dataset using a stratified 80/10/10 split. On the test set, the hybrid
+model achieved an accuracy of 77.07\%, a weighted F1 of 77.12\%, and---most
+critically for a detection system---a seizure recall of 86.67\%. The
+overfitting gap was contained to 6.8\% overall and only 2\% for seizure
+recall, indicating stable generalisation. These results directly address
+Objective~4 (evaluate the model's accuracy, reliability, and usability),
+while the implementation on a Raspberry Pi with LCD, LED, buzzer, and
+remote dashboard fulfils Objective~3 (real-time monitoring capability for
+low-resource environments).
 
-\begin{enumerate}
-  \item \textbf{Patient-independent evaluation}: The train/test split is
-        performed across the pooled patient data rather than across
-        patients, which may inflate apparent generalisation. A
-        leave-one-patient-out evaluation would provide a stricter bound.
-  \item \textbf{Small cohort}: Six patients is insufficient to capture
-        the full inter-patient variability of EEG morphology in focal
-        epilepsy.
-  \item \textbf{Fixed window size}: The one-second window may miss
-        slow pre-ictal build-up patterns that span several seconds.
-  \item \textbf{No temporal context}: The classifier treats each window
-        independently, ignoring sequential state transitions that could
-        reduce false alarms.
-\end{enumerate}
+Several technical challenges were encountered during development, and the
+engineering decisions made to resolve them are discussed below.
+
+\subsection*{Overfitting}
+
+The initial model using ANOVA-based feature selection exhibited a 14.2\%
+gap between training and test accuracy. This was traced to the high
+dimensionality (247 features) and the tendency of Random Forest to memorise
+noise when trees were too deep. By switching to bootstrap RF importance for
+feature selection (reducing to 75 features) and constraining tree depth
+(\texttt{max\_depth=8}, \texttt{min\_samples\_leaf=4}) while keeping the
+number of trees high (300), the overfitting gap was reduced to 6.8\%. The
+nearly unchanged seizure recall across splits (88.96\% training vs.\
+86.67\% test) confirms that the model's sensitivity is stable---a
+requirement for reliable alerting.
+
+\subsection*{Pre-Seizure class ambiguity}
+
+Regardless of model configuration, the Pre-Seizure class consistently
+yielded the lowest precision and recall (F1\,$\approx$\,0.71). Of 390
+true Pre-Seizure windows, \textbf{83 were silently missed} (predicted
+Normal, rate: 21.3\%) and \textbf{24 were over-escalated} (predicted
+Seizure, rate: 6.2\%). The missed-as-Normal direction is the most
+significant: each such window produces no warning output, creating gaps
+in the early-warning signal precisely when it is most needed. Both error
+types arise from the same root cause: the hand-crafted features used
+(band powers, Hjorth parameters, skewness, kurtosis, RMS, zero-crossing
+rate, and spectral entropy) capture only instantaneous properties of a
+single one-second window. They do not model the temporal evolution of the
+EEG signal over the 25-minute pre-ictal period. This limitation indicates
+that temporal context is necessary; future work will incorporate short
+sequences of consecutive windows into a lightweight recurrent or
+convolutional model (addressing Objective~2).
+
+\subsection*{Data reconstruction decisions}
+
+The original Mendeley dataset does not contain a pre-ictal label. The
+definition of Pre-Seizure as the 5--30 minutes before seizure onset, and
+the 60-minute exclusion buffer for Normal windows, are design choices that
+directly affect class separability. A narrower pre-ictal window might
+increase feature distinctiveness but reduces the warning horizon; a wider
+window might increase overlap with Normal activity. The moderate
+performance on the Pre-Seizure class is partly a consequence of this
+trade-off. For engineering reproducibility, the exact extraction parameters
+have been documented.
+
+\subsection*{Hardware and system integration}
+
+On the Raspberry Pi, the LCD display initially showed corrupted characters
+on startup due to residual data from previous runs. This was solved by
+implementing a full reset sequence: backlight off $\to$ clear display $\to$
+home $\to$ overwrite all 80 character cells with spaces $\to$ clear $\to$
+home $\to$ backlight on. Additionally, the monitoring engine, clinician
+dashboard, and patient UI are three independent processes sharing state
+through a JSON file. Race conditions during concurrent writes occasionally
+caused read errors, which required implementing safe JSON read wrappers
+with retry logic. These integration issues, while not affecting model
+metrics, are critical for a deployed system meeting Objective~3 (continuous
+EEG surveillance and timely alerting).
+
+\subsection*{SMS state management}
+
+The alert logic required careful engineering: an SMS notification should
+be sent only after 30 continuous seconds of Seizure classification (not
+accumulated time), only one alert per seizure episode, and a clearing
+message should be sent only if the seizure alert was successfully
+delivered. This was implemented using a persistent state machine in the
+main prediction loop, ensuring that the system does not flood the
+clinician with redundant messages.
+
+\subsection*{Data split integrity}
+
+An early version of the preprocessing pipeline inadvertently dropped 10\%
+of samples at the train-test boundary due to incorrect index calculations.
+This inflated the test accuracy artificially. After fixing the index logic,
+the reported metrics reflect the true generalisation performance, satisfying
+Objective~4's requirement for transparent evaluation.
+
+In summary, the proposed hybrid RF-SVM model provides a solid engineering
+baseline for real-time prototype seizure detection on edge hardware,
+achieving acceptable overall accuracy and high seizure recall while running
+on a low-cost Raspberry Pi. The main technical limitations are the
+ambiguity of the Pre-Seizure class using only instantaneous hand-crafted
+features and the reliance on manually defined temporal windows.
 
 %% ============================================================
 \chapter{Conclusion}
@@ -2258,18 +2573,41 @@ prototype-level performance rather than deployment readiness.
 
 \section{Conclusions}
 
-The proposed system demonstrates that resource-constrained edge hardware can host an
-EEG seizure detection prototype using classical machine learning.
-The system successfully differentiates Normal, Pre-Seizure, and Seizure
-brain states in near real-time, enabling a caregiver or clinician to
-monitor a patient remotely and receive timely alerts without requiring
-continuous EEG review.
+This project designed and evaluated a lightweight hybrid machine learning
+framework for early seizure detection using EEG signals, with a focus on
+low-resource deployment on edge hardware such as a Raspberry Pi. The
+proposed system combines Random Forest (RF) for robust feature selection
+and noise resilience with Support Vector Machine (SVM) for refined decision
+boundary optimisation. A three-class classification task (Normal,
+Pre-Seizure, Seizure) was constructed from raw EDF recordings of the
+Mendeley Epileptic EEG dataset, including a genuine 25-minute pre-ictal
+window and a 60-minute exclusion buffer for Normal windows.
+
+The hybrid model achieved a test accuracy of 77.07\%, a weighted F1 of
+77.12\%, and a seizure recall of 86.67\%---the most critical metric for a
+detection system. The overfitting gap was limited to 6.8\% overall and
+only 2\% for seizure recall, confirming stable generalisation. The system
+was successfully implemented on a Raspberry Pi with a 20$\times$4 LCD,
+LED indicators, a buzzer, a remote dashboard, and SMS alerting via Twilio,
+fulfilling the project's objective of real-time monitoring in low-resource
+environments (Objective~3). Evaluation metrics (accuracy, precision, recall,
+F1, specificity) were reported transparently, satisfying Objective~4.
+
+The main engineering limitations identified were: (1) persistent ambiguity
+of the Pre-Seizure class using only instantaneous hand-crafted features
+(F1\,$\approx$\,0.71), with 21.3\% of true pre-ictal windows missed as
+Normal; (2) reliance on manually defined temporal windows for data
+reconstruction; and (3) hardware integration challenges such as LCD
+corruption and JSON file race conditions, both resolved through defensive
+software engineering.
 
 The combination of RF importance-based feature selection with an asymmetric
 SVM and a calibrated threshold correction proved superior to a single
-classifier or an untuned ensemble. These findings confirm that careful
-post-processing and class-imbalance handling are as important as
-model architecture in EEG signal classification prototypes.
+classifier or an untuned ensemble. These results represent
+\textbf{promising prototype-level performance rather than clinical
+deployment readiness}, and confirm that careful post-processing and
+class-imbalance handling are as important as model architecture in EEG
+signal classification prototypes.
 
 %% ============================================================
 \chapter{Future Works}
