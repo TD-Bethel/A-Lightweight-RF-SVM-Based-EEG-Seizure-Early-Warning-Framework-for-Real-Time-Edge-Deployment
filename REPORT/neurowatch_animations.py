@@ -11,6 +11,7 @@ SCENES
   RFScene                -- Random Forest deep-dive (247 dots → scout RF → trees → voting)
   SVMScene               -- SVM deep-dive (scatter → scaling → RBF → boundary → Platt)
   MLEnsembleDetailScene  -- Detailed ensemble blend, threshold correction, final flash
+  ProjectGanttScene      -- Gantt chart project timeline Aug 2025 – May 2026
 
 USAGE  (run from the REPORT/ folder or adjust --media-dir)
 ------
@@ -22,12 +23,13 @@ USAGE  (run from the REPORT/ folder or adjust --media-dir)
   manim -pql neurowatch_animations.py RFScene
   manim -pql neurowatch_animations.py SVMScene
   manim -pql neurowatch_animations.py MLEnsembleDetailScene
+  manim -pql neurowatch_animations.py ProjectGanttScene
 
   # render the ML deep-dive trilogy:
   manim -qh neurowatch_animations.py RFScene SVMScene MLEnsembleDetailScene
 
   # render ALL at high quality:
-  manim -qh neurowatch_animations.py EEGWaveformScene FeaturePipelineScene EnsembleScene SystemFlowScene ConfusionMatrixScene RFScene SVMScene MLEnsembleDetailScene
+  manim -qh neurowatch_animations.py EEGWaveformScene FeaturePipelineScene EnsembleScene SystemFlowScene ConfusionMatrixScene RFScene SVMScene MLEnsembleDetailScene ProjectGanttScene
 
 Quality flags: -ql 480p (fast draft) | -qm 720p | -qh 1080p | -qk 4K
 """
@@ -1885,3 +1887,169 @@ class SVMReportImages(Scene):
         self.wait(0.1)
         _save_report(self, "SVM_6_platt_scaling")
         self.remove(*self.mobjects)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ProjectGanttScene  —  Gantt chart project timeline Aug 2025 – May 2026
+#
+#  Render:
+#    manim -pql neurowatch_animations.py ProjectGanttScene   (draft)
+#    manim -qh  neurowatch_animations.py ProjectGanttScene   (high quality)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ProjectGanttScene(Scene):
+    def construct(self):
+        self.camera.background_color = DARK_BG
+
+        # ── Timeline data ──────────────────────────────────────────────────
+        MONTHS = ["Aug", "Sep", "Oct", "Nov", "Jan", "Feb", "Mar", "Apr", "May"]
+        YEARS  = ["2025", "",   "",    "",    "2026","",    "",    "",    ""   ]
+
+        # (label, start_col, end_col_exclusive, hex_colour)
+        # Columns 0-3 = Semester 1 (Aug–Nov 2025)
+        # Columns 4-8 = Semester 2 (Jan–May 2026)
+        TASKS = [
+            ("Literature Review",        0, 2, BLUE_ACC),
+            ("Methodology Design",       1, 4, PURPLE_ACC),
+            ("ML Model Development",     2, 4, TEAL),
+            ("Circuit Simulation",       3, 4, ORANGE_ACC),
+            ("Hardware Implementation",  4, 6, NEON_GREEN),
+            ("Monitoring Dashboard",     5, 7, "#4cc9f0"),
+            ("Patient User Interface",   6, 8, GOLD_ACC),
+            ("Results & Analysis",       7, 9, AMBER),
+            ("Report Writing",           7, 9, NEON_YELLOW),
+        ]
+
+        N_MONTHS  = len(MONTHS)
+        N_TASKS   = len(TASKS)
+        SEM1_COLS = 4
+        SEM2_COLS = 5
+
+        # ── Layout constants ───────────────────────────────────────────────
+        LABEL_CX   = -5.05
+        CHART_L    = -3.0
+        CHART_R    =  6.8
+        COL_W      = (CHART_R - CHART_L) / N_MONTHS
+        TITLE_Y    =  3.65
+        HEADER_Y   =  3.05
+        ROW_TOP_Y  =  2.60
+        ROW_H      =  0.54
+        BAR_H      =  0.36
+        BOTTOM_Y   =  ROW_TOP_Y - N_TASKS * ROW_H   # ≈ -2.26
+
+        # ── Title ──────────────────────────────────────────────────────────
+        title = Text("NeuroWatch — Project Timeline", font_size=32,
+                     weight=BOLD, color=WHITE)
+        subtitle = Text("BIUST Final Year Project  |  Aug 2025 – May 2026",
+                        font_size=15, color=GOLD_ACC)
+        title.move_to([0, TITLE_Y, 0])
+        subtitle.next_to(title, DOWN, buff=0.10)
+        self.play(Write(title), FadeIn(subtitle), run_time=1.0)
+
+        # ── Semester background blocks ──────────────────────────────────────
+        blk_h  = N_TASKS * ROW_H + 0.10
+        blk_cy = ROW_TOP_Y - blk_h / 2 + 0.05
+
+        sem1_w  = SEM1_COLS * COL_W
+        sem2_w  = SEM2_COLS * COL_W
+        sem1_cx = CHART_L + sem1_w / 2
+        sem2_cx = CHART_L + SEM1_COLS * COL_W + sem2_w / 2
+
+        sem1_bg = Rectangle(
+            width=sem1_w, height=blk_h,
+            fill_color=BLUE_ACC, fill_opacity=0.08,
+            stroke_color=BLUE_ACC, stroke_width=0.8, stroke_opacity=0.45,
+        ).move_to([sem1_cx, blk_cy, 0])
+
+        sem2_bg = Rectangle(
+            width=sem2_w, height=blk_h,
+            fill_color=NEON_GREEN, fill_opacity=0.07,
+            stroke_color=NEON_GREEN, stroke_width=0.8, stroke_opacity=0.45,
+        ).move_to([sem2_cx, blk_cy, 0])
+
+        self.play(FadeIn(sem1_bg), FadeIn(sem2_bg), run_time=0.5)
+
+        # ── Month header row ───────────────────────────────────────────────
+        month_grp = VGroup()
+        for i, (m, y) in enumerate(zip(MONTHS, YEARS)):
+            cx = CHART_L + (i + 0.5) * COL_W
+            top = Text(m, font_size=13, color=WHITE)
+            top.move_to([cx, HEADER_Y + 0.10, 0])
+            month_grp.add(top)
+            if y:
+                yr = Text(y, font_size=10, color=GRAY_A)
+                yr.next_to(top, DOWN, buff=0.03)
+                month_grp.add(yr)
+
+        header_line = Line(
+            [CHART_L, HEADER_Y - 0.18, 0],
+            [CHART_R, HEADER_Y - 0.18, 0],
+            color=GRAY, stroke_width=0.9,
+        )
+        self.play(Write(month_grp), Create(header_line), run_time=0.7)
+
+        # ── Vertical grid + semester divider ───────────────────────────────
+        grid = VGroup(*[
+            Line(
+                [CHART_L + i * COL_W, HEADER_Y - 0.18, 0],
+                [CHART_L + i * COL_W, BOTTOM_Y,        0],
+                color=GRAY, stroke_width=0.4, stroke_opacity=0.25,
+            )
+            for i in range(N_MONTHS + 1)
+        ])
+        div_x = CHART_L + SEM1_COLS * COL_W
+        sem_div = DashedLine(
+            [div_x, HEADER_Y - 0.18, 0],
+            [div_x, BOTTOM_Y,        0],
+            color=GOLD_ACC, stroke_width=1.6, stroke_opacity=0.75,
+            dash_length=0.13,
+        )
+        self.play(Create(grid), Create(sem_div), run_time=0.45)
+
+        # ── Task bars ──────────────────────────────────────────────────────
+        for j, (name, s, e, clr) in enumerate(TASKS):
+            y_c = ROW_TOP_Y - (j + 0.5) * ROW_H
+
+            lbl = Text(name, font_size=12, color=WHITE)
+            lbl.move_to([LABEL_CX, y_c, 0])
+
+            bx_l = CHART_L + s * COL_W + 0.05
+            bx_r = CHART_L + e * COL_W - 0.05
+            bar = RoundedRectangle(
+                width=bx_r - bx_l, height=BAR_H,
+                corner_radius=0.07,
+                fill_color=clr, fill_opacity=0.88,
+                stroke_width=0,
+            ).move_to([(bx_l + bx_r) / 2, y_c, 0])
+
+            row_sep = Line(
+                [LABEL_CX - 1.6, y_c - ROW_H / 2, 0],
+                [CHART_R,        y_c - ROW_H / 2, 0],
+                color=GRAY, stroke_width=0.3, stroke_opacity=0.20,
+            )
+
+            self.play(
+                Write(lbl),
+                GrowFromEdge(bar, LEFT),
+                Create(row_sep),
+                run_time=0.42,
+            )
+
+        # ── Semester labels at bottom ───────────────────────────────────────
+        sem1_lbl = Text("SEMESTER 1", font_size=11, weight=BOLD, color=BLUE_ACC)
+        sem1_lbl.move_to([sem1_cx, BOTTOM_Y - 0.28, 0])
+        sem2_lbl = Text("SEMESTER 2", font_size=11, weight=BOLD, color=NEON_GREEN)
+        sem2_lbl.move_to([sem2_cx, BOTTOM_Y - 0.28, 0])
+
+        # ── Milestone checkmarks ────────────────────────────────────────────
+        ck1 = Text("✓  Circuit Simulation done", font_size=12, color=NEON_GREEN)
+        ck1.move_to([sem1_cx, BOTTOM_Y - 0.55, 0])
+        ck2 = Text("✓  Hardware & Report done", font_size=12, color=NEON_GREEN)
+        ck2.move_to([sem2_cx, BOTTOM_Y - 0.55, 0])
+
+        self.play(
+            Write(sem1_lbl), Write(sem2_lbl),
+            run_time=0.5,
+        )
+        self.play(Write(ck1), Write(ck2), run_time=0.6)
+        self.wait(3.0)

@@ -248,11 +248,18 @@ are extracted, as shown in Table~\ref{tab:window_types}.
   \end{tabularx}
 \end{table}
 
-\noindent The pre-ictal window spans the interval from 30~minutes to
-5~minutes before each seizure onset, giving a 25-minute segment that
-reflects the transition period before a seizure. The five-minute buffer
-between the window end and the onset marker ensures that no early ictal
-discharges contaminate the pre-ictal label.
+\noindent The pre-ictal window is defined as the 25-minute segment
+spanning from 30~minutes to 5~minutes before each confirmed seizure
+onset, capturing the gradual physiological transition that precedes a
+seizure. The five-minute buffer at the leading edge is deliberately
+maintained to prevent early ictal discharges from contaminating the
+pre-ictal label. While this 5--30 minute range is consistent with
+prediction horizons adopted in comparable seizure prediction
+studies~\cite{hu2020epileptic}, its selection here constitutes an
+engineering assumption for this prototype. How classifier performance
+varies under narrower or wider pre-ictal horizons has not been
+systematically investigated, and sensitivity analysis across alternative
+window lengths remains a direction for future work.
 
 \subsubsection*{Temporal Safety Constraints}
 
