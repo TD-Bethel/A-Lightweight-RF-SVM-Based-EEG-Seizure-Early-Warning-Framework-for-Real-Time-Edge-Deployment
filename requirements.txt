@@ -10,6 +10,4 @@ scikit-learn
 scipy
 streamlit
 tensorboard
-torch
-torchvision
 twilio
