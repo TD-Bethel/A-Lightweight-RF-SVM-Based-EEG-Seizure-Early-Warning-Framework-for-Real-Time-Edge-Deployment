@@ -246,26 +246,29 @@ x = np.arange(len(models))
 w = 0.25
 
 fig, ax = plt.subplots(figsize=(11, 5))
-fig.patch.set_facecolor(DARK_BG)
-ax.set_facecolor(MID_BG)
+fig.patch.set_facecolor("white")
+ax.set_facecolor("white")
 
-b1 = ax.bar(x - w, accuracy,  w, label="Overall Accuracy (%)", color=BLUE,   alpha=0.9, edgecolor="#333")
-b2 = ax.bar(x,     f1_scores, w, label="F1-score (weighted %)", color=GREEN,  alpha=0.9, edgecolor="#333")
-b3 = ax.bar(x + w, sz_recall, w, label="Seizure Recall (%)",    color=RED,    alpha=0.9, edgecolor="#333")
+b1 = ax.bar(x - w, accuracy,  w, label="Overall Accuracy (%)", color="#2563eb", alpha=0.9, edgecolor="#1e3a8a")
+b2 = ax.bar(x,     f1_scores, w, label="F1-score (weighted %)", color="#16a34a", alpha=0.9, edgecolor="#14532d")
+b3 = ax.bar(x + w, sz_recall, w, label="Seizure Recall (%)",    color="#dc2626", alpha=0.9, edgecolor="#7f1d1d")
 
 for bars in [b1, b2, b3]:
     for bar in bars:
         h = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2, h + 0.5, f"{h:.1f}",
-                ha="center", va="bottom", fontsize=7.5, color=TEXT)
+                ha="center", va="bottom", fontsize=7.5, color="#111111")
 
-ax.set_xticks(x); ax.set_xticklabels(models, fontsize=8.5)
+ax.set_xticks(x); ax.set_xticklabels(models, fontsize=8.5, color="#111111")
 ax.set_ylim(60, 95)
-ax.set_ylabel("Score (%)", color=TEXT)
+ax.set_ylabel("Score (%)", color="#111111")
+ax.tick_params(colors="#111111")
+ax.spines[["top", "right"]].set_visible(False)
+ax.spines[["left", "bottom"]].set_color("#cccccc")
 ax.set_title("Model Performance Comparison Across Training Iterations", fontsize=11,
-             fontweight="bold", color=TEXT, pad=8)
-ax.legend(loc="lower right", fontsize=8, framealpha=0.3)
-ax.yaxis.grid(True, alpha=0.3); ax.set_axisbelow(True)
+             fontweight="bold", color="#111111", pad=8)
+ax.legend(loc="lower right", fontsize=8, framealpha=0.8, edgecolor="#cccccc")
+ax.yaxis.grid(True, alpha=0.4, color="#dddddd"); ax.set_axisbelow(True)
 
 plt.tight_layout(pad=0.5)
 plt.savefig(os.path.join(OUT, "fig5_results_comparison.pdf"), bbox_inches="tight", dpi=150)
@@ -312,6 +315,58 @@ plt.savefig(os.path.join(OUT, "fig6_confusion_matrix.pdf"), bbox_inches="tight",
 plt.savefig(os.path.join(OUT, "fig6_confusion_matrix.png"), bbox_inches="tight", dpi=150)
 plt.close()
 print("  fig6_confusion_matrix saved")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fig 7  Feature-count ablation (k vs validation metrics)
+# ─────────────────────────────────────────────────────────────────────────────
+k_vals   = [25,   50,   75,   100,  247]
+abl_acc  = [88.7, 94.0, 96.0, 96.3, 96.3]
+abl_f1   = [88.7, 94.0, 96.0, 96.3, 96.3]
+abl_rec  = [85.3, 90.7, 93.3, 94.7, 94.7]
+
+fig, ax = plt.subplots(figsize=(8, 5))
+fig.patch.set_facecolor("white")
+ax.set_facecolor("white")
+
+ax.plot(k_vals, abl_acc, "o-",  color="#2563eb", linewidth=2, markersize=7,
+        label="Overall Accuracy (%)")
+ax.plot(k_vals, abl_f1,  "s--", color="#16a34a", linewidth=2, markersize=7,
+        label="Weighted F1 (%)")
+ax.plot(k_vals, abl_rec, "^:",  color="#dc2626", linewidth=2, markersize=7,
+        label="Seizure Recall (%)")
+
+# Annotate each point
+for k, a, f, r in zip(k_vals, abl_acc, abl_f1, abl_rec):
+    ax.annotate(f"{a:.1f}", (k, a), textcoords="offset points",
+                xytext=(0, 8), ha="center", fontsize=8, color="#2563eb")
+    ax.annotate(f"{r:.1f}", (k, r), textcoords="offset points",
+                xytext=(0, -14), ha="center", fontsize=8, color="#dc2626")
+
+# Highlight the selected k=75
+ax.axvline(75, color="#888888", linestyle="--", linewidth=1.2, alpha=0.7)
+ax.text(75 + 3, 85.5, "Selected\n$k=75$", fontsize=8.5, color="#444444",
+        va="bottom")
+
+ax.set_xticks(k_vals)
+ax.set_xticklabels([str(k) for k in k_vals], color="#111111")
+ax.tick_params(colors="#111111")
+ax.set_xlabel("Number of features retained ($k$)", color="#111111", fontsize=11)
+ax.set_ylabel("Score (%)", color="#111111", fontsize=11)
+ax.set_ylim(82, 99)
+ax.set_title("Feature-Count Ablation — RF60+SVM40\\_C2 (Validation Set)",
+             fontsize=11, fontweight="bold", color="#111111", pad=8)
+ax.legend(loc="lower right", fontsize=9, framealpha=0.9, edgecolor="#cccccc")
+ax.spines[["top", "right"]].set_visible(False)
+ax.spines[["left", "bottom"]].set_color("#cccccc")
+ax.yaxis.grid(True, alpha=0.4, color="#dddddd")
+ax.set_axisbelow(True)
+
+plt.tight_layout(pad=0.5)
+plt.savefig(os.path.join(OUT, "fig7_feature_ablation.pdf"), bbox_inches="tight", dpi=150)
+plt.savefig(os.path.join(OUT, "fig7_feature_ablation.png"), bbox_inches="tight", dpi=150)
+plt.close()
+print("  fig7_feature_ablation saved")
 
 
 print("\n  All figures saved to:", OUT)

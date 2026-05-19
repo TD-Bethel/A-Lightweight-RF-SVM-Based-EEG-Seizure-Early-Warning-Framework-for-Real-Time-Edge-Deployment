@@ -1,0 +1,232 @@
+[
+  {
+    "rf_weight": 0.7,
+    "svm_weight": 0.3,
+    "label": "RF 70 / SVM 30",
+    "train_accuracy": 0.8127,
+    "train_macro_f1": 0.8135,
+    "overfitting_gap": 0.0198,
+    "accuracy": 0.7929,
+    "macro_f1": 0.793,
+    "per_class": {
+      "Normal": {
+        "precision": 0.8203,
+        "recall": 0.6739,
+        "f1": 0.74
+      },
+      "Pre-Seizure": {
+        "precision": 0.6921,
+        "recall": 0.8395,
+        "f1": 0.7587
+      },
+      "Seizure": {
+        "precision": 0.8963,
+        "recall": 0.8652,
+        "f1": 0.8805
+      }
+    },
+    "confusion_matrix": [
+      [
+        525,
+        214,
+        40
+      ],
+      [
+        87,
+        654,
+        38
+      ],
+      [
+        28,
+        77,
+        674
+      ]
+    ],
+    "seizure_recall": 0.8652,
+    "preictal_recall": 0.8395
+  },
+  {
+    "rf_weight": 0.6,
+    "svm_weight": 0.4,
+    "label": "RF 60 / SVM 40",
+    "train_accuracy": 0.8206,
+    "train_macro_f1": 0.8215,
+    "overfitting_gap": 0.0221,
+    "accuracy": 0.7985,
+    "macro_f1": 0.7984,
+    "per_class": {
+      "Normal": {
+        "precision": 0.8207,
+        "recall": 0.6816,
+        "f1": 0.7447
+      },
+      "Pre-Seizure": {
+        "precision": 0.702,
+        "recall": 0.8408,
+        "f1": 0.7652
+      },
+      "Seizure": {
+        "precision": 0.8983,
+        "recall": 0.8729,
+        "f1": 0.8854
+      }
+    },
+    "confusion_matrix": [
+      [
+        531,
+        207,
+        41
+      ],
+      [
+        88,
+        655,
+        36
+      ],
+      [
+        28,
+        71,
+        680
+      ]
+    ],
+    "seizure_recall": 0.8729,
+    "preictal_recall": 0.8408
+  },
+  {
+    "rf_weight": 0.5,
+    "svm_weight": 0.5,
+    "label": "RF 50 / SVM 50",
+    "train_accuracy": 0.8255,
+    "train_macro_f1": 0.8263,
+    "overfitting_gap": 0.0215,
+    "accuracy": 0.804,
+    "macro_f1": 0.8041,
+    "per_class": {
+      "Normal": {
+        "precision": 0.8256,
+        "recall": 0.6868,
+        "f1": 0.7498
+      },
+      "Pre-Seizure": {
+        "precision": 0.7074,
+        "recall": 0.8537,
+        "f1": 0.7737
+      },
+      "Seizure": {
+        "precision": 0.9065,
+        "recall": 0.8716,
+        "f1": 0.8887
+      }
+    },
+    "confusion_matrix": [
+      [
+        535,
+        205,
+        39
+      ],
+      [
+        83,
+        665,
+        31
+      ],
+      [
+        30,
+        70,
+        679
+      ]
+    ],
+    "seizure_recall": 0.8716,
+    "preictal_recall": 0.8537
+  },
+  {
+    "rf_weight": 0.4,
+    "svm_weight": 0.6,
+    "label": "RF 40 / SVM 60",
+    "train_accuracy": 0.828,
+    "train_macro_f1": 0.8287,
+    "overfitting_gap": 0.0231,
+    "accuracy": 0.8049,
+    "macro_f1": 0.805,
+    "per_class": {
+      "Normal": {
+        "precision": 0.8214,
+        "recall": 0.6906,
+        "f1": 0.7503
+      },
+      "Pre-Seizure": {
+        "precision": 0.7103,
+        "recall": 0.8498,
+        "f1": 0.7738
+      },
+      "Seizure": {
+        "precision": 0.908,
+        "recall": 0.8742,
+        "f1": 0.8908
+      }
+    },
+    "confusion_matrix": [
+      [
+        538,
+        201,
+        40
+      ],
+      [
+        88,
+        662,
+        29
+      ],
+      [
+        29,
+        69,
+        681
+      ]
+    ],
+    "seizure_recall": 0.8742,
+    "preictal_recall": 0.8498
+  },
+  {
+    "rf_weight": 0.3,
+    "svm_weight": 0.7,
+    "label": "RF 30 / SVM 70",
+    "train_accuracy": 0.8297,
+    "train_macro_f1": 0.8304,
+    "overfitting_gap": 0.0218,
+    "accuracy": 0.8079,
+    "macro_f1": 0.8081,
+    "per_class": {
+      "Normal": {
+        "precision": 0.8218,
+        "recall": 0.6983,
+        "f1": 0.755
+      },
+      "Pre-Seizure": {
+        "precision": 0.7141,
+        "recall": 0.8498,
+        "f1": 0.7761
+      },
+      "Seizure": {
+        "precision": 0.9118,
+        "recall": 0.8755,
+        "f1": 0.8933
+      }
+    },
+    "confusion_matrix": [
+      [
+        544,
+        198,
+        37
+      ],
+      [
+        88,
+        662,
+        29
+      ],
+      [
+        30,
+        67,
+        682
+      ]
+    ],
+    "seizure_recall": 0.8755,
+    "preictal_recall": 0.8498
+  }
+]

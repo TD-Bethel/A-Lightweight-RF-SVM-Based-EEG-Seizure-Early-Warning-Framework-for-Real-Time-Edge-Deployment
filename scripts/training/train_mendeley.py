@@ -977,6 +977,39 @@ def save_models(scaler, selector, svm, rf, train_m, val_m, test_m, out_dir,
     print(f"     training_report.json")
     print(f"     HOW_TO_USE.txt")
 
+    # ── MLflow logging (optional — silently skipped if mlflow not installed) ──
+    # Records this training run so multiple runs (different seeds, hyperparameters,
+    # feature counts, weight ratios) can be compared in the MLflow UI.
+    # View later with:   mlflow ui   →   http://localhost:5000
+    try:
+        import mlflow
+        mlflow.set_tracking_uri(f"file:{os.path.join(BASE_DIR, 'mlruns')}")
+        mlflow.set_experiment("neurowatch_training")
+        with mlflow.start_run(run_name=os.path.basename(out_dir)):
+            mlflow.log_params({
+                "n_features"      : N_FEATURES,
+                "n_selected"      : N_SELECT,
+                "n_channels"      : N_CHANNELS,
+                "svm_weight"      : svm_w,
+                "rf_weight"       : rf_w,
+                "normal_threshold": normal_threshold,
+                "feature_selector": "RF importance (bootstrap 300 trees)",
+                "normalisation"   : "Option A (relative band power)",
+            })
+            for split_name, m in [("train", train_m), ("val", val_m), ("test", test_m)]:
+                mlflow.log_metric(f"{split_name}_accuracy",       m["acc"])
+                mlflow.log_metric(f"{split_name}_f1",             m["f1"])
+                mlflow.log_metric(f"{split_name}_seizure_recall", m["sz_rec"])
+            mlflow.log_metric("overfitting_gap", train_m["acc"] - val_m["acc"])
+            # Attach the training report + the model pickles as run artifacts.
+            mlflow.log_artifact(report_path)
+            mlflow.log_artifacts(out_dir, artifact_path="models")
+        print(f"     mlflow run logged  (run `mlflow ui` from {BASE_DIR})")
+    except ImportError:
+        pass  # mlflow not installed — silent skip
+    except Exception as e:
+        print(f"  WARN  MLflow logging failed: {e}")
+
     return report
 
 

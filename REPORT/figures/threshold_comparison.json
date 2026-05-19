@@ -1,0 +1,18 @@
+{
+  "without": {
+    "accuracy": 0.7985,
+    "weighted_f1": 0.7984,
+    "normal_precision": 0.8207,
+    "preictal_recall": 0.8408,
+    "seizure_recall": 0.8729,
+    "false_alarms": 207
+  },
+  "with": {
+    "accuracy": 0.807,
+    "weighted_f1": 0.8076,
+    "normal_precision": 0.797,
+    "preictal_recall": 0.8023,
+    "seizure_recall": 0.8729,
+    "false_alarms": 157
+  }
+}
