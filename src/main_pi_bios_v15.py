@@ -42,6 +42,16 @@
 # search, random numbers, warnings, threads, file copy, and CSV writing.
 import os, sys, time, json, argparse, glob, random, warnings, threading, shutil, csv
 
+# Windows consoles default to a legacy code page (e.g. cp1252) that cannot encode
+# the emoji used in the status prints below, which otherwise crashes the engine
+# with UnicodeEncodeError before it ever loads a model. Force UTF-8 on the
+# streams so it runs on a stock Windows terminal without needing PYTHONUTF8=1.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 # Make sure Python can find modules in the project root folder (one level up).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

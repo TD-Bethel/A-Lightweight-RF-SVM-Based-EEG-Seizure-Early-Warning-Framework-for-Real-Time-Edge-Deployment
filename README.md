@@ -130,11 +130,11 @@ Open **three terminals** from the project root:
 ```bash
 # Terminal 1 — live monitoring engine
 python src/main_pi_bios_v15.py \
-  --models "models/MODELS_FS75" \
+  --models "models/RF60+SVM40_C2" \
   --data   "data/Mendelay dataset/Npy_files_preictal"
 
 # Terminal 2 — clinician dashboard
-streamlit run dashboard_v2.py --server.port 8505
+streamlit run src/dashboard_v2.py --server.port 8505
 
 # Terminal 3 — patient mobile UI
 streamlit run src/patient_mobile_ui.py --server.port 8502
